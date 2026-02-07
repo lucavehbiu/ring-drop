@@ -2,8 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// Stick placement and visual guide bands.
-/// The stick is placed at a Z distance each level.
-/// Green torus bands show the valid Y range for threading.
+/// Now keeps colliders on the stick body (for potential ring-stick collision).
+/// Guide bands are visual only.
 /// </summary>
 public class StickController : MonoBehaviour
 {
@@ -16,7 +16,6 @@ public class StickController : MonoBehaviour
 
     private LevelData _cfg;
 
-    // Cache the URP shader once for all material creation
     private static Shader _urpLit;
 
     private static Shader GetURPLit()
@@ -32,16 +31,12 @@ public class StickController : MonoBehaviour
         transform.position = new Vector3(cfg.stickX, 0f, cfg.stickZ);
     }
 
-    /// <summary>
-    /// Call this from a scene setup script to procedurally generate the stick.
-    /// Returns the fully built stick GameObject.
-    /// </summary>
     public static StickController CreateStick()
     {
         GameObject root = new GameObject("Stick");
         var ctrl = root.AddComponent<StickController>();
 
-        // Main cylinder
+        // Main cylinder — keep collider for ring-stick interaction
         var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         body.name = "StickBody";
         body.transform.SetParent(root.transform);
@@ -51,30 +46,30 @@ public class StickController : MonoBehaviour
             Constants.STICK_HEIGHT / 2f,
             Constants.STICK_RADIUS * 2f
         );
-        SetEmissiveColor(body, Constants.MAGENTA, 0.55f);
+        SetEmissiveColor(body, Constants.MAGENTA, 0.55f, keepCollider: true);
         ctrl.stickBody = body;
 
-        // Base
+        // Base — keep collider
         var baseObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         baseObj.name = "StickBase";
         baseObj.transform.SetParent(root.transform);
         baseObj.transform.localPosition = new Vector3(0f, 0.06f, 0f);
         baseObj.transform.localScale = new Vector3(0.7f, 0.06f, 0.7f);
-        SetEmissiveColor(baseObj, Constants.MAGENTA * 0.6f, 0.4f);
+        SetEmissiveColor(baseObj, Constants.MAGENTA * 0.6f, 0.4f, keepCollider: true);
         ctrl.stickBase = baseObj;
 
-        // Cap (sphere on top)
+        // Cap (sphere on top) — keep collider
         var cap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         cap.name = "StickCap";
         cap.transform.SetParent(root.transform);
         cap.transform.localPosition = new Vector3(0f, Constants.STICK_HEIGHT, 0f);
         cap.transform.localScale = Vector3.one * 0.26f;
-        SetEmissiveColor(cap, Constants.MAGENTA, 0.85f);
+        SetEmissiveColor(cap, Constants.MAGENTA, 0.85f, keepCollider: true);
         ctrl.stickCap = cap;
 
-        // Guide bands (spheres scaled flat as torus stand-ins — proper torus via mesh later)
-        ctrl.lowerBand = CreateGuideBand(root.transform, Constants.VALID_Y_MIN, "LowerBand");
-        ctrl.upperBand = CreateGuideBand(root.transform, Constants.VALID_Y_MAX, "UpperBand");
+        // Guide bands — visual only, no colliders
+        ctrl.lowerBand = CreateGuideBand(root.transform, Constants.STICK_HEIGHT * 0.1f, "LowerBand");
+        ctrl.upperBand = CreateGuideBand(root.transform, Constants.STICK_HEIGHT * 0.8f, "UpperBand");
 
         return ctrl;
     }
@@ -108,7 +103,7 @@ public class StickController : MonoBehaviour
         return band;
     }
 
-    private static void SetEmissiveColor(GameObject obj, Color color, float emissiveIntensity)
+    private static void SetEmissiveColor(GameObject obj, Color color, float emissiveIntensity, bool keepCollider = false)
     {
         var shader = GetURPLit();
         if (shader == null)
@@ -124,8 +119,10 @@ public class StickController : MonoBehaviour
         mat.EnableKeyword("_EMISSION");
         r.material = mat;
 
-        // Remove collider (we do our own collision detection)
-        var col = obj.GetComponent<Collider>();
-        if (col != null) Object.Destroy(col);
+        if (!keepCollider)
+        {
+            var col = obj.GetComponent<Collider>();
+            if (col != null) Object.Destroy(col);
+        }
     }
 }

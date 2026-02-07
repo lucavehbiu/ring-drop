@@ -1,8 +1,9 @@
 using UnityEngine;
+using Unity.Cinemachine;
 
 /// <summary>
 /// Scene bootstrap — creates all game objects procedurally.
-/// Now includes: starfield, fog, better lighting, UI manager.
+/// Now uses: Rigidbody physics, Cinemachine cameras, PhysicsMaterials.
 /// </summary>
 public class SceneBootstrap : MonoBehaviour
 {
@@ -23,10 +24,15 @@ public class SceneBootstrap : MonoBehaviour
             return;
         }
 
-        // === CAMERA ===
+        // === CAMERA — add Cinemachine Brain for blending ===
         mainCam.backgroundColor = Constants.BG;
         mainCam.clearFlags = CameraClearFlags.SolidColor;
         mainCam.farClipPlane = 500f;
+
+        var brain = mainCam.gameObject.AddComponent<CinemachineBrain>();
+        brain.DefaultBlend = new CinemachineBlendDefinition(
+            CinemachineBlendDefinition.Styles.EaseInOut, 1.2f
+        );
 
         // === FOG ===
         RenderSettings.fog = true;
@@ -38,7 +44,6 @@ public class SceneBootstrap : MonoBehaviour
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.06f, 0.03f, 0.12f);
 
-        // Main directional (moonlight feel)
         var dirLight = new GameObject("DirectionalLight");
         var dl = dirLight.AddComponent<Light>();
         dl.type = LightType.Directional;
@@ -46,7 +51,6 @@ public class SceneBootstrap : MonoBehaviour
         dl.intensity = 0.4f;
         dirLight.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
 
-        // Fill light (warm rim from below-right)
         var fillObj = new GameObject("FillLight");
         var fl = fillObj.AddComponent<Light>();
         fl.type = LightType.Directional;
@@ -54,7 +58,6 @@ public class SceneBootstrap : MonoBehaviour
         fl.intensity = 0.15f;
         fillObj.transform.rotation = Quaternion.Euler(-20f, 120f, 0f);
 
-        // Ring point light
         var ringLightObj = new GameObject("RingLight");
         var rl = ringLightObj.AddComponent<Light>();
         rl.type = LightType.Point;
@@ -66,26 +69,84 @@ public class SceneBootstrap : MonoBehaviour
         var inputObj = new GameObject("GameInput");
         inputObj.AddComponent<GameInput>();
 
-        // === RING (torus) ===
+        // === PHYSICS MATERIALS ===
+        var ringPhysMat = new PhysicsMaterial("RingPhysMat")
+        {
+            bounciness = Constants.RING_BOUNCE,
+            dynamicFriction = Constants.RING_FRICTION,
+            staticFriction = Constants.RING_FRICTION,
+            bounceCombine = PhysicsMaterialCombine.Maximum,
+            frictionCombine = PhysicsMaterialCombine.Average
+        };
+
+        var groundPhysMat = new PhysicsMaterial("GroundPhysMat")
+        {
+            bounciness = Constants.GROUND_BOUNCE,
+            dynamicFriction = Constants.GROUND_FRICTION,
+            staticFriction = Constants.GROUND_FRICTION,
+            bounceCombine = PhysicsMaterialCombine.Maximum,
+            frictionCombine = PhysicsMaterialCombine.Average
+        };
+
+        // === RING (torus with Rigidbody) ===
         var ringObj = new GameObject("Ring");
         var meshFilter = ringObj.AddComponent<MeshFilter>();
         var meshRenderer = ringObj.AddComponent<MeshRenderer>();
-        meshFilter.mesh = TorusMeshGenerator.Create(Constants.RING_RADIUS, Constants.RING_TUBE, 48, 24);
+        var torusMesh = TorusMeshGenerator.Create(Constants.RING_RADIUS, Constants.RING_TUBE, 48, 24);
+        meshFilter.mesh = torusMesh;
+
         var ringMat = new Material(urpLit);
         ringMat.color = Constants.CYAN;
         ringMat.SetColor("_EmissionColor", Constants.CYAN * 0.8f);
         ringMat.EnableKeyword("_EMISSION");
         meshRenderer.material = ringMat;
-        ringObj.AddComponent<RingController>();
+
+        // Rigidbody for real physics
+        var ringRb = ringObj.AddComponent<Rigidbody>();
+        ringRb.mass = Constants.RING_MASS;
+        ringRb.linearDamping = 0.3f;
+        ringRb.angularDamping = 2f;
+        ringRb.interpolation = RigidbodyInterpolation.Interpolate;
+        ringRb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        // MeshCollider convex for physics
+        var ringCollider = ringObj.AddComponent<MeshCollider>();
+        ringCollider.sharedMesh = torusMesh;
+        ringCollider.convex = true;
+        ringCollider.material = ringPhysMat;
+
+        var ringCtrl = ringObj.AddComponent<RingController>();
 
         ringLightObj.transform.SetParent(ringObj.transform);
         ringLightObj.transform.localPosition = new Vector3(0f, 0.5f, 0f);
 
-        // === STICK ===
-        StickController.CreateStick();
+        // === STICK (with colliders for physical interaction) ===
+        var stickCtrl = StickController.CreateStick();
 
-        // === CAMERA FOLLOW ===
-        mainCam.gameObject.AddComponent<CameraFollow>();
+        // === GROUND (with collider and tag) ===
+        var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        ground.name = "Ground";
+        ground.tag = "Ground";
+        ground.transform.position = Vector3.zero;
+        ground.transform.localScale = new Vector3(20f, 1f, 20f);
+        var groundMat = new Material(urpLit);
+        groundMat.color = new Color(0.015f, 0.008f, 0.04f);
+        groundMat.SetFloat("_Smoothness", 0.85f);
+        groundMat.SetFloat("_Metallic", 0.3f);
+        ground.GetComponent<Renderer>().material = groundMat;
+
+        // Ground collider already exists from CreatePrimitive, just set physics material
+        var groundCollider = ground.GetComponent<Collider>();
+        if (groundCollider != null)
+            groundCollider.material = groundPhysMat;
+
+        // === INVISIBLE WALLS to keep ring in bounds ===
+        CreateWall("WallLeft", new Vector3(-6f, 5f, -100f), new Vector3(0.1f, 10f, 200f));
+        CreateWall("WallRight", new Vector3(6f, 5f, -100f), new Vector3(0.1f, 10f, 200f));
+
+        // === CAMERA FOLLOW + CINEMACHINE ===
+        var camFollow = mainCam.gameObject.AddComponent<CameraFollow>();
+        camFollow.SetupCinemachine(ringObj.transform, stickCtrl.transform);
 
         // === GAME MANAGER ===
         var gmObj = new GameObject("GameManager");
@@ -99,24 +160,21 @@ public class SceneBootstrap : MonoBehaviour
         var sfxObj = new GameObject("SFXManager");
         sfxObj.AddComponent<SFXManager>();
 
-        // === GROUND ===
-        var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        ground.name = "Ground";
-        ground.transform.position = Vector3.zero;
-        ground.transform.localScale = new Vector3(20f, 1f, 20f);
-        var groundMat = new Material(urpLit);
-        groundMat.color = new Color(0.015f, 0.008f, 0.04f);
-        groundMat.SetFloat("_Smoothness", 0.85f);
-        groundMat.SetFloat("_Metallic", 0.3f);
-        ground.GetComponent<Renderer>().material = groundMat;
-
         // === STARFIELD ===
         CreateStarfield(urpUnlit ?? urpLit);
 
         // === DISTANT NEBULA LIGHTS ===
         CreateNebulaLights();
 
-        Debug.Log("[RingDrop] Scene bootstrapped. Tap/click or press Space to start.");
+        Debug.Log("[RingDrop] Scene bootstrapped with Rigidbody physics + Cinemachine. Tap/click or press Space to start.");
+    }
+
+    private void CreateWall(string name, Vector3 position, Vector3 scale)
+    {
+        var wall = new GameObject(name);
+        wall.transform.position = position;
+        var col = wall.AddComponent<BoxCollider>();
+        col.size = scale;
     }
 
     private void CreateStarfield(Shader shader)
@@ -130,23 +188,17 @@ public class SceneBootstrap : MonoBehaviour
             mat.EnableKeyword("_EMISSION");
         }
 
-        // Create a combined mesh for all stars (much better performance than individual objects)
         int starCount = 300;
         CombineInstance[] combines = new CombineInstance[starCount];
         var starMesh = CreateQuadMesh();
 
         for (int i = 0; i < starCount; i++)
         {
-            // Scatter in a sphere shell around play area
             Vector3 dir = Random.onUnitSphere;
             float dist = Random.Range(60f, 200f);
             Vector3 pos = dir * dist;
-
-            // Keep stars above ground and in front-ish hemisphere
             if (pos.y < 5f) pos.y = Random.Range(5f, 80f);
-
             float size = Random.Range(0.1f, 0.5f);
-            // Bigger stars when further
             if (dist > 120f) size *= 1.5f;
 
             Matrix4x4 matrix = Matrix4x4.TRS(pos, Random.rotation, Vector3.one * size);
@@ -182,12 +234,11 @@ public class SceneBootstrap : MonoBehaviour
 
     private void CreateNebulaLights()
     {
-        // Distant colored point lights to simulate nebula glow
         Color[] nebulaColors = {
-            new Color(0.4f, 0f, 0.8f),   // purple
-            new Color(0f, 0.3f, 0.8f),   // deep blue
-            new Color(0.8f, 0f, 0.4f),   // magenta
-            new Color(0f, 0.6f, 0.6f),   // teal
+            new Color(0.4f, 0f, 0.8f),
+            new Color(0f, 0.3f, 0.8f),
+            new Color(0.8f, 0f, 0.4f),
+            new Color(0f, 0.6f, 0.6f),
         };
 
         Vector3[] positions = {

@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Minimal UI using OnGUI — shows score, level, state feedback, threading timer.
+/// Minimal UI using OnGUI — shows score, level, state feedback.
 /// Quick and dependency-free. Will upgrade to Canvas UI later.
 /// </summary>
 public class UIManager : MonoBehaviour

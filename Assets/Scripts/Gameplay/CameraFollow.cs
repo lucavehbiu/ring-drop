@@ -1,142 +1,140 @@
 using UnityEngine;
+using Unity.Cinemachine;
 
 /// <summary>
-/// Smooth camera that follows the ring with lerp-based tracking,
-/// subtle barrel roll, and look-ahead toward the stick.
+/// Camera system using Cinemachine virtual cameras.
+/// Creates virtual cameras for each game state and switches between them
+/// via priority. Cinemachine Brain on main camera handles blending.
 /// </summary>
 public class CameraFollow : MonoBehaviour
 {
     [SerializeField] private RingController ring;
     [SerializeField] private StickController stick;
 
-    private Camera _cam;
+    private CinemachineCamera _playingCam;
+    private CinemachineCamera _menuCam;
+    private CinemachineCamera _successCam;
+    private Camera _mainCam;
+
+    private float _menuTime;
 
     private void Awake()
     {
-        _cam = GetComponent<Camera>();
-        if (_cam == null)
-            _cam = Camera.main;
+        _mainCam = GetComponent<Camera>();
+        if (_mainCam == null) _mainCam = Camera.main;
     }
 
     private void Start()
     {
-        // Auto-wire references if not assigned in Inspector (procedural bootstrap)
         if (ring == null) ring = FindAnyObjectByType<RingController>();
         if (stick == null) stick = FindAnyObjectByType<StickController>();
     }
 
-    public void Reset()
+    /// <summary>Create all Cinemachine virtual cameras. Called from SceneBootstrap.</summary>
+    public void SetupCinemachine(Transform ringTransform, Transform stickTransform)
     {
-        if (_cam != null)
-            _cam.fieldOfView = Constants.BASE_FOV;
+        // === PLAYING CAMERA — follows the ring from behind and above ===
+        var playObj = new GameObject("CM_Playing");
+        _playingCam = playObj.AddComponent<CinemachineCamera>();
+        _playingCam.Follow = ringTransform;
+        _playingCam.LookAt = ringTransform;
+
+        // Set lens
+        var playLens = _playingCam.Lens;
+        playLens.FieldOfView = Constants.BASE_FOV;
+        playLens.NearClipPlane = 0.1f;
+        playLens.FarClipPlane = 500f;
+        _playingCam.Lens = playLens;
+
+        // Follow behavior — position behind and above
+        var follow = playObj.AddComponent<CinemachineFollow>();
+        follow.FollowOffset = new Vector3(0f, 2.5f, 7f);
+
+        // Rotation composer for smooth aim
+        var composer = playObj.AddComponent<CinemachineRotationComposer>();
+
+        _playingCam.Priority.Value = 0;
+
+        // === MENU CAMERA — static position, looking at scene ===
+        var menuObj = new GameObject("CM_Menu");
+        _menuCam = menuObj.AddComponent<CinemachineCamera>();
+
+        var menuLens = _menuCam.Lens;
+        menuLens.FieldOfView = Constants.BASE_FOV;
+        menuLens.NearClipPlane = 0.1f;
+        menuLens.FarClipPlane = 500f;
+        _menuCam.Lens = menuLens;
+
+        menuObj.transform.position = new Vector3(0f, 5.5f, 10f);
+        menuObj.transform.LookAt(new Vector3(0f, 3f, -10f));
+        _menuCam.Priority.Value = 10;
+
+        // === SUCCESS CAMERA — diagonal angle on stick/ring ===
+        var successObj = new GameObject("CM_Success");
+        _successCam = successObj.AddComponent<CinemachineCamera>();
+        _successCam.Follow = stickTransform;
+        _successCam.LookAt = stickTransform;
+
+        var successLens = _successCam.Lens;
+        successLens.FieldOfView = Constants.BASE_FOV;
+        successLens.NearClipPlane = 0.1f;
+        successLens.FarClipPlane = 500f;
+        _successCam.Lens = successLens;
+
+        // Follow with diagonal offset
+        var successFollow = successObj.AddComponent<CinemachineFollow>();
+        successFollow.FollowOffset = new Vector3(3f, 3f, 3f);
+
+        _successCam.Priority.Value = 0;
+    }
+
+    /// <summary>Switch active camera based on game state.</summary>
+    public void OnStateChanged(GameManager.GameState state)
+    {
+        if (_menuCam != null) _menuCam.Priority.Value = 0;
+        if (_playingCam != null) _playingCam.Priority.Value = 0;
+        if (_successCam != null) _successCam.Priority.Value = 0;
+
+        switch (state)
+        {
+            case GameManager.GameState.Menu:
+                if (_menuCam != null) _menuCam.Priority.Value = 10;
+                break;
+
+            case GameManager.GameState.Countdown:
+            case GameManager.GameState.Playing:
+            case GameManager.GameState.Fail:
+                if (_playingCam != null) _playingCam.Priority.Value = 10;
+                break;
+
+            case GameManager.GameState.Success:
+                if (_successCam != null) _successCam.Priority.Value = 10;
+                break;
+
+            case GameManager.GameState.GameOver:
+                break;
+        }
     }
 
     private void LateUpdate()
     {
-        if (ring == null || stick == null || GameManager.Instance == null) return;
+        if (GameManager.Instance == null) return;
 
-        var state = GameManager.Instance.State;
-        Vector3 ringPos = ring.transform.position;
-        float dt = Time.deltaTime;
-
-        if (state == GameManager.GameState.Playing)
+        // Menu camera gentle float
+        if (GameManager.Instance.State == GameManager.GameState.Menu && _menuCam != null)
         {
-            UpdatePlayingCamera(ringPos, dt);
-        }
-        else if (state == GameManager.GameState.Menu)
-        {
-            // Gentle float in menu
-            float t = Time.time;
-            transform.position = new Vector3(
-                Mathf.Sin(t * 0.3f) * 0.5f,
-                5.5f + Mathf.Sin(t * 1f) * 0.3f,
+            _menuTime += Time.deltaTime;
+            _menuCam.transform.position = new Vector3(
+                Mathf.Sin(_menuTime * 0.3f) * 0.5f,
+                5.5f + Mathf.Sin(_menuTime * 1f) * 0.3f,
                 10f
             );
-            transform.LookAt(new Vector3(0f, 3f, -10f));
-        }
-        else if (state == GameManager.GameState.Countdown)
-        {
-            // Ease toward play position
-            Vector3 targetPos = new Vector3(0f, ringPos.y + 2.5f, ringPos.z + 9f);
-            transform.position = Vector3.Lerp(transform.position, targetPos, 2f * dt);
-            transform.LookAt(ringPos + Vector3.forward * -5f);
-        }
-        else if (state == GameManager.GameState.Fail)
-        {
-            UpdatePlayingCamera(ringPos, dt);
-        }
-        else if (state == GameManager.GameState.Success)
-        {
-            // During success, follow ring falling down stick — side angle
-            UpdateSuccessCamera(ringPos, dt);
+            _menuCam.transform.LookAt(new Vector3(0f, 3f, -10f));
         }
     }
 
-    private void UpdatePlayingCamera(Vector3 ringPos, float dt)
+    public void Reset()
     {
-        // Target position: behind and above the ring
-        float offsetY = Constants.CAM_OFFSET_Y;
-        float offsetZ = Constants.CAM_OFFSET_Z;
-
-        Vector3 targetPos = new Vector3(
-            ringPos.x * 0.4f,
-            ringPos.y + offsetY,
-            ringPos.z + offsetZ
-        );
-
-        // Smooth follow
-        Vector3 pos = transform.position;
-        pos.x = Mathf.Lerp(pos.x, targetPos.x, Constants.CAM_FOLLOW_X * dt * 60f);
-        pos.y = Mathf.Lerp(pos.y, targetPos.y, Constants.CAM_FOLLOW_Y * dt * 60f);
-        pos.z = Mathf.Lerp(pos.z, targetPos.z, Constants.CAM_FOLLOW_Z * dt * 60f);
-        transform.position = pos;
-
-        // Look-ahead: blend between ring and stick as progress increases
-        float progress = Mathf.Clamp01(ring.Progress);
-        float stickX = stick.transform.position.x;
-        float stickZ = stick.transform.position.z;
-
-        float lookZ = Mathf.Max(ringPos.z - 12f, stickZ);
-        Vector3 lookTarget = new Vector3(
-            ringPos.x * 0.25f + stickX * progress * 0.3f,
-            ringPos.y * 0.4f + 1.6f,
-            lookZ
-        );
-        transform.LookAt(lookTarget);
-
-        // Barrel roll
-        Vector3 euler = transform.eulerAngles;
-        float targetRoll = -ring.VX * Constants.CAM_ROLL_MULT;
-        // Smooth the roll
-        float currentRoll = transform.localEulerAngles.z;
-        if (currentRoll > 180f) currentRoll -= 360f;
-        float smoothRoll = Mathf.Lerp(currentRoll, targetRoll, 5f * dt);
-        transform.Rotate(0f, 0f, smoothRoll - currentRoll, Space.Self);
-
-        // Keep FOV constant
-        _cam.fieldOfView = Constants.BASE_FOV;
+        // Cinemachine handles everything, nothing to reset
     }
-
-    /// <summary>
-    /// Success camera: diagonal view of ring on the ground near the stick.
-    /// </summary>
-    private void UpdateSuccessCamera(Vector3 ringPos, float dt)
-    {
-        Vector3 stickPos = stick.transform.position;
-
-        // Diagonal angle — offset to side and above, not straight down or behind
-        Vector3 targetPos = new Vector3(
-            stickPos.x + 2.5f,
-            ringPos.y + 3f,
-            stickPos.z + 3f
-        );
-
-        transform.position = Vector3.Lerp(transform.position, targetPos, 3f * dt);
-        Vector3 lookAt = new Vector3(stickPos.x, ringPos.y * 0.3f + 0.3f, stickPos.z);
-        transform.LookAt(lookAt);
-
-        // No zoom — keep FOV constant
-        _cam.fieldOfView = Constants.BASE_FOV;
-    }
-
 }

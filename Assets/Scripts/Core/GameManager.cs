@@ -6,7 +6,8 @@ using UnityEngine.InputSystem;
 /// Central game state machine. Controls flow from menu to gameplay to game over.
 /// Singleton — access via GameManager.Instance.
 ///
-/// Flow: Playing → ring flies over stick → Success (caught) / Fail (missed)
+/// Flow: Menu → Countdown → Playing → Success/Fail → GameOver
+/// Ring uses Rigidbody physics. Success/fail detected via OnCollisionEnter in RingController.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -22,7 +23,6 @@ public class GameManager : MonoBehaviour
     [SerializeField] private StickController stick;
     [SerializeField] private CameraFollow cam;
 
-    // Events for UI to listen to
     public UnityEvent<GameState> OnStateChanged;
     public UnityEvent<int> OnScoreChanged;
     public UnityEvent<int> OnLevelChanged;
@@ -58,6 +58,12 @@ public class GameManager : MonoBehaviour
             Debug.LogError("[RingDrop] GameManager missing references!");
         else
             Debug.Log("[RingDrop] Ready. Press Space or Click to start.");
+
+        // Wire up camera state switching
+        OnStateChanged.AddListener(state => cam?.OnStateChanged(state));
+
+        // Ring starts frozen in menu
+        ring?.Freeze();
     }
 
     private bool StartInputPressed()
@@ -89,6 +95,7 @@ public class GameManager : MonoBehaviour
         var cfg = LevelConfig.Get(_level);
         stick.Setup(cfg);
         ring.Setup(cfg);
+        ring.Freeze(); // frozen during countdown
         cam.Reset();
 
         _countdownTimer = 0f;
@@ -107,7 +114,10 @@ public class GameManager : MonoBehaviour
             case GameState.Countdown:
                 _countdownTimer += Time.deltaTime;
                 if (_countdownTimer >= 2.5f)
+                {
+                    ring.Unfreeze(); // enable physics
                     SetState(GameState.Playing);
+                }
                 break;
 
             case GameState.Success:
@@ -133,7 +143,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>Called by RingController when ring lands on ground with stick inside.</summary>
     public void OnSuccess()
     {
         if (State != GameState.Playing) return;
