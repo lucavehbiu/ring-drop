@@ -1,0 +1,50 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# Visual Studio
+.vs/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity3D generated meta files
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# OS
+.DS_Store
+.DS_Store?
+Thumbs.db
+desktop.ini
+
+# Crashlytics
+crashlytics-build.properties
+sysinfo.txt
+
+# Rider
+.idea/
+
+# Gradle (Android builds)
+*.apk
+*.aab
+*.unitypackage
+*.gradle
+.gradle/
