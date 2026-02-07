@@ -23,9 +23,9 @@ public class GameManager : MonoBehaviour
     [SerializeField] private StickController stick;
     [SerializeField] private CameraFollow cam;
 
-    public UnityEvent<GameState> OnStateChanged;
-    public UnityEvent<int> OnScoreChanged;
-    public UnityEvent<int> OnLevelChanged;
+    public UnityEvent<GameState> OnStateChanged = new UnityEvent<GameState>();
+    public UnityEvent<int> OnScoreChanged = new UnityEvent<int>();
+    public UnityEvent<int> OnLevelChanged = new UnityEvent<int>();
 
     private int _score;
     private int _level = 1;
