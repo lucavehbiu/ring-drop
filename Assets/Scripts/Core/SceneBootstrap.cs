@@ -16,6 +16,12 @@ public class SceneBootstrap : MonoBehaviour
             return;
         }
 
+        // Ring (layer 8) and Stick (layer 9) don't collide with each other.
+        // The ring's convex MeshCollider can't represent a hole, so we let
+        // the ring pass through the stick entirely. Success is detected by
+        // position math when the ring hits the ground.
+        Physics.IgnoreLayerCollision(8, 9, true);
+
         var urpLit = Shader.Find("Universal Render Pipeline/Lit");
         var urpUnlit = Shader.Find("Universal Render Pipeline/Unlit");
         if (urpLit == null)
@@ -115,13 +121,15 @@ public class SceneBootstrap : MonoBehaviour
         ringCollider.convex = true;
         ringCollider.material = ringPhysMat;
 
+        ringObj.layer = 8; // "Ring" layer
         var ringCtrl = ringObj.AddComponent<RingController>();
 
         ringLightObj.transform.SetParent(ringObj.transform);
         ringLightObj.transform.localPosition = new Vector3(0f, 0.5f, 0f);
 
-        // === STICK (with colliders for physical interaction) ===
+        // === STICK ===
         var stickCtrl = StickController.CreateStick();
+        SetLayerRecursive(stickCtrl.gameObject, 9); // "Stick" layer
 
         // === GROUND (with collider and tag) ===
         var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
@@ -167,6 +175,13 @@ public class SceneBootstrap : MonoBehaviour
         CreateNebulaLights();
 
         Debug.Log("[RingDrop] Scene bootstrapped with Rigidbody physics + Cinemachine. Tap/click or press Space to start.");
+    }
+
+    private static void SetLayerRecursive(GameObject obj, int layer)
+    {
+        obj.layer = layer;
+        foreach (Transform child in obj.transform)
+            SetLayerRecursive(child.gameObject, layer);
     }
 
     private void CreateWall(string name, Vector3 position, Vector3 scale)
