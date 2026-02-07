@@ -19,6 +19,8 @@ public class RingController : MonoBehaviour
     private bool _windGusts;
     private float _windGust;
     private LevelData _cfg;
+    private float _atStickTime; // how long ring has been at stick Z
+    private bool _atStick;
 
     // Success settle animation (post-physics)
     private bool _settling;
@@ -47,6 +49,8 @@ public class RingController : MonoBehaviour
         _landed = false;
         _settling = false;
         _settleTime = 0f;
+        _atStick = false;
+        _atStickTime = 0f;
 
         transform.position = new Vector3(0f, 4.5f, 2f);
         transform.rotation = Quaternion.identity;
@@ -155,9 +159,39 @@ public class RingController : MonoBehaviour
         _windGust *= 0.97f;
         _rb.AddForce(Vector3.right * (windBase + _windGust), ForceMode.Acceleration);
 
-        // Constant forward movement (not physics-driven, we set Z velocity directly)
+        // Forward movement — decelerate as ring approaches stick, stop at stick Z
         Vector3 vel = _rb.linearVelocity;
-        vel.z = -_forwardSpeed;
+        float distZ = transform.position.z - _targetZ; // positive = still approaching
+
+        if (distZ > 6f)
+        {
+            // Far away — full speed
+            vel.z = -_forwardSpeed;
+        }
+        else if (distZ > 0.5f)
+        {
+            // Approaching — decelerate smoothly
+            float t = distZ / 6f; // 1 at 6 units, 0 at 0.5
+            vel.z = -_forwardSpeed * Mathf.Lerp(0.15f, 1f, t);
+        }
+        else
+        {
+            // At the stick — stop forward, let gravity do the work
+            vel.z = 0f;
+            _atStick = true;
+            _atStickTime += dt;
+
+            // Flatten the ring so the hole faces down onto the stick
+            Quaternion flat = Quaternion.identity;
+            transform.rotation = Quaternion.Slerp(transform.rotation, flat, 8f * dt);
+            _rb.angularVelocity *= 0.8f;
+
+            // After 4s hovering, force drop (disable lift)
+            if (_atStickTime > 4f)
+            {
+                _rb.AddForce(Vector3.down * 5f, ForceMode.Acceleration);
+            }
+        }
 
         // Clamp velocities
         vel.x = Mathf.Clamp(vel.x, -Constants.MAX_VX, Constants.MAX_VX);

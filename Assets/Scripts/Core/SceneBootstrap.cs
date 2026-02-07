@@ -16,12 +16,6 @@ public class SceneBootstrap : MonoBehaviour
             return;
         }
 
-        // Ring (layer 8) and Stick (layer 9) don't collide with each other.
-        // The ring's convex MeshCollider can't represent a hole, so we let
-        // the ring pass through the stick entirely. Success is detected by
-        // position math when the ring hits the ground.
-        Physics.IgnoreLayerCollision(8, 9, true);
-
         var urpLit = Shader.Find("Universal Render Pipeline/Lit");
         var urpUnlit = Shader.Find("Universal Render Pipeline/Unlit");
         if (urpLit == null)
@@ -115,13 +109,12 @@ public class SceneBootstrap : MonoBehaviour
         ringRb.interpolation = RigidbodyInterpolation.Interpolate;
         ringRb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
-        // MeshCollider convex for physics
-        var ringCollider = ringObj.AddComponent<MeshCollider>();
-        ringCollider.sharedMesh = torusMesh;
-        ringCollider.convex = true;
-        ringCollider.material = ringPhysMat;
+        // Compound collider — ring of BoxColliders with open center hole.
+        // A convex MeshCollider fills the torus hole (solid disc), so we
+        // use 12 small boxes arranged in a circle to form the ring shape.
+        // The center stays open so the stick can pass through.
+        CreateRingCompoundCollider(ringObj, Constants.RING_RADIUS, Constants.RING_TUBE, ringPhysMat);
 
-        ringObj.layer = 8; // "Ring" layer
         var ringCtrl = ringObj.AddComponent<RingController>();
 
         ringLightObj.transform.SetParent(ringObj.transform);
@@ -129,7 +122,6 @@ public class SceneBootstrap : MonoBehaviour
 
         // === STICK ===
         var stickCtrl = StickController.CreateStick();
-        SetLayerRecursive(stickCtrl.gameObject, 9); // "Stick" layer
 
         // === GROUND (with collider and tag) ===
         var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
@@ -177,11 +169,34 @@ public class SceneBootstrap : MonoBehaviour
         Debug.Log("[RingDrop] Scene bootstrapped with Rigidbody physics + Cinemachine. Tap/click or press Space to start.");
     }
 
-    private static void SetLayerRecursive(GameObject obj, int layer)
+    /// <summary>
+    /// Creates a ring-shaped compound collider from BoxColliders arranged in a circle.
+    /// The center hole stays open so the stick pole can pass through.
+    /// </summary>
+    private static void CreateRingCompoundCollider(GameObject ringObj, float radius, float tube, PhysicsMaterial mat)
     {
-        obj.layer = layer;
-        foreach (Transform child in obj.transform)
-            SetLayerRecursive(child.gameObject, layer);
+        int segments = 12;
+        float angleStep = 360f / segments;
+        // Each box spans one arc segment of the ring
+        float arcLength = 2f * Mathf.PI * radius / segments;
+
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = i * angleStep * Mathf.Deg2Rad;
+            float x = Mathf.Cos(angle) * radius;
+            float z = Mathf.Sin(angle) * radius;
+
+            var child = new GameObject($"RingCol_{i}");
+            child.transform.SetParent(ringObj.transform, false);
+            child.transform.localPosition = new Vector3(x, 0f, z);
+            // Rotate box to face outward along the ring
+            child.transform.localRotation = Quaternion.Euler(0f, -i * angleStep, 0f);
+
+            var box = child.AddComponent<BoxCollider>();
+            // Box size: width = arc length, height = tube diameter, depth = tube diameter
+            box.size = new Vector3(arcLength, tube * 2f, tube * 2f);
+            box.material = mat;
+        }
     }
 
     private void CreateWall(string name, Vector3 position, Vector3 scale)

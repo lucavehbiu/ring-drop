@@ -39,6 +39,7 @@ public class StickController : MonoBehaviour
         // Main cylinder — keep collider for ring-stick interaction
         var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         body.name = "StickBody";
+        body.tag = "Stick";
         body.transform.SetParent(root.transform);
         body.transform.localPosition = new Vector3(0f, Constants.STICK_HEIGHT / 2f, 0f);
         body.transform.localScale = new Vector3(
@@ -52,6 +53,7 @@ public class StickController : MonoBehaviour
         // Base — keep collider
         var baseObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         baseObj.name = "StickBase";
+        baseObj.tag = "Stick";
         baseObj.transform.SetParent(root.transform);
         baseObj.transform.localPosition = new Vector3(0f, 0.06f, 0f);
         baseObj.transform.localScale = new Vector3(0.7f, 0.06f, 0.7f);
@@ -61,6 +63,7 @@ public class StickController : MonoBehaviour
         // Cap (sphere on top) — keep collider
         var cap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         cap.name = "StickCap";
+        cap.tag = "Stick";
         cap.transform.SetParent(root.transform);
         cap.transform.localPosition = new Vector3(0f, Constants.STICK_HEIGHT, 0f);
         cap.transform.localScale = Vector3.one * 0.26f;
