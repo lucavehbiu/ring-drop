@@ -53,7 +53,7 @@ public class CameraFollow : MonoBehaviour
         // Rotation composer for smooth aim
         var composer = playObj.AddComponent<CinemachineRotationComposer>();
 
-        _playingCam.Priority.Value = 0;
+        _playingCam.Priority = 0;
 
         // === MENU CAMERA — static position, looking at scene ===
         var menuObj = new GameObject("CM_Menu");
@@ -67,7 +67,7 @@ public class CameraFollow : MonoBehaviour
 
         menuObj.transform.position = new Vector3(0f, 5.5f, 10f);
         menuObj.transform.LookAt(new Vector3(0f, 3f, -10f));
-        _menuCam.Priority.Value = 10;
+        _menuCam.Priority = 10;
 
         // === SUCCESS CAMERA — diagonal angle on stick/ring ===
         var successObj = new GameObject("CM_Success");
@@ -85,30 +85,30 @@ public class CameraFollow : MonoBehaviour
         var successFollow = successObj.AddComponent<CinemachineFollow>();
         successFollow.FollowOffset = new Vector3(3f, 3f, 3f);
 
-        _successCam.Priority.Value = 0;
+        _successCam.Priority = 0;
     }
 
     /// <summary>Switch active camera based on game state.</summary>
     public void OnStateChanged(GameManager.GameState state)
     {
-        if (_menuCam != null) _menuCam.Priority.Value = 0;
-        if (_playingCam != null) _playingCam.Priority.Value = 0;
-        if (_successCam != null) _successCam.Priority.Value = 0;
+        if (_menuCam != null) _menuCam.Priority = 0;
+        if (_playingCam != null) _playingCam.Priority = 0;
+        if (_successCam != null) _successCam.Priority = 0;
 
         switch (state)
         {
             case GameManager.GameState.Menu:
-                if (_menuCam != null) _menuCam.Priority.Value = 10;
+                if (_menuCam != null) _menuCam.Priority = 10;
                 break;
 
             case GameManager.GameState.Countdown:
             case GameManager.GameState.Playing:
             case GameManager.GameState.Fail:
-                if (_playingCam != null) _playingCam.Priority.Value = 10;
+                if (_playingCam != null) _playingCam.Priority = 10;
                 break;
 
             case GameManager.GameState.Success:
-                if (_successCam != null) _successCam.Priority.Value = 10;
+                if (_successCam != null) _successCam.Priority = 10;
                 break;
 
             case GameManager.GameState.GameOver:
