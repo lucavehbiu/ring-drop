@@ -41,7 +41,7 @@ public class GameManager : MonoBehaviour
     public int Level => _level;
     public int Combo => _combo;
     public int HighScore => _highScore;
-    public float ThreadingTimeLeft => Mathf.Max(0f, Constants.THREADING_DURATION - _threadingTimer);
+    public float ThreadingTimeLeft => 0f;
 
     public StickController Stick => stick;
 
@@ -115,8 +115,6 @@ public class GameManager : MonoBehaviour
                 break;
 
             case GameState.Threading:
-                _threadingTimer += Time.deltaTime;
-
                 // Check for drop input (tap/press = drop the ring)
                 var input = GameInput.Instance;
                 if (input != null && input.WasTapped)
@@ -127,9 +125,11 @@ public class GameManager : MonoBehaviour
                     OnRingDrop(aligned);
                 }
 
-                // Timeout — ring drifts past, you lose
-                if (_threadingTimer >= Constants.THREADING_DURATION)
-                    OnFail("timeout");
+                // Ring passed beyond stick — missed it
+                float ringZ = ring.transform.position.z;
+                float stickZ = stick.transform.position.z;
+                if (ringZ < stickZ - 2f)
+                    OnFail("missed");
                 break;
 
             case GameState.Success:

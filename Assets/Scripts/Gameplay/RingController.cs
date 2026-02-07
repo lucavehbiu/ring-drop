@@ -76,20 +76,10 @@ public class RingController : MonoBehaviour
         _vy = 0f;
     }
 
-    /// <summary>Called by GameManager when threading state starts.</summary>
+    /// <summary>Called by GameManager when threading state starts. Ring keeps moving.</summary>
     public void BeginThreading()
     {
         _threadingTime = 0f;
-        // Kill vertical velocity — ring should hover smoothly
-        _vy = 0f;
-
-        // Random horizontal offset so player always has alignment work
-        int level = GameManager.Instance != null ? GameManager.Instance.Level : 1;
-        float offset = 0.2f + (level - 1) * 0.05f;
-        float sign = Random.value > 0.5f ? 1f : -1f;
-        Vector3 pos = transform.position;
-        pos.x += sign * offset;
-        transform.position = pos;
     }
 
     /// <summary>Called by GameManager when success state starts.</summary>
@@ -111,12 +101,12 @@ public class RingController : MonoBehaviour
     public void BeginFailAnimation()
     {
         _failTime = 0f;
-        _failVelocityY = _vy < 0f ? _vy : -1f; // seed from current velocity or small downward
-        _failVelocityX = (Random.value - 0.5f) * 3f; // random sideways kick
+        _failVelocityY = Mathf.Min(_vy, -2f); // always start falling
+        _failVelocityX = (Random.value - 0.5f) * 2f;
         _failTumbleX = 0f;
         _failTumbleZ = 0f;
-        _failTumbleSpeedX = (Random.value - 0.5f) * 400f; // chaotic tumble
-        _failTumbleSpeedZ = (Random.value - 0.5f) * 300f;
+        _failTumbleSpeedX = (Random.value - 0.5f) * 300f;
+        _failTumbleSpeedZ = (Random.value - 0.5f) * 200f;
         _failHitGround = false;
         _failBounceCount = 0;
         transform.localScale = Vector3.one;
@@ -154,11 +144,8 @@ public class RingController : MonoBehaviour
         float dt = Time.fixedDeltaTime;
         _playTime += dt;
 
-        // Slow-motion near stick
-        float dist = DistanceToStick;
-        SpeedMultiplier = dist < Constants.SLOWMO_DIST
-            ? Mathf.Max(Constants.SLOWMO_MIN, dist / Constants.SLOWMO_DIST)
-            : 1f;
+        // No slow-mo — constant speed
+        SpeedMultiplier = 1f;
 
         // Gravity + lift
         _vy += _gravity * dt;
@@ -225,51 +212,14 @@ public class RingController : MonoBehaviour
     }
 
     /// <summary>
-    /// Threading phase: ring hovers near stick, player steers to align.
-    /// Drop is handled by GameManager checking input in Update().
-    /// Wind drift pushes ring off-center for challenge.
+    /// Threading phase: ring keeps flying — same physics as Playing.
+    /// Camera changes perspective but ring doesn't stop.
+    /// If ring passes beyond stick Z, GameManager detects and fails.
     /// </summary>
     private void UpdateThreading()
     {
-        var input = GameInput.Instance;
-        if (input == null) return;
-
-        float dt = Time.fixedDeltaTime;
-        _threadingTime += dt;
-
-        Vector3 pos = transform.position;
-
-        // Slow forward drift (ring slowly passes if player doesn't drop)
-        pos.z -= Constants.THREADING_DRIFT * dt;
-
-        // Precise horizontal steering
-        if (input.SteerDirection != 0f)
-            pos.x += input.SteerDirection * Constants.THREADING_STEER * dt;
-
-        // Wind drift — sinusoidal push that makes alignment a real challenge
-        int level = GameManager.Instance != null ? GameManager.Instance.Level : 1;
-        float windStrength = Constants.THREADING_WIND_BASE + (level - 1) * Constants.THREADING_WIND_PER_LVL;
-        float windDrift = Mathf.Sin(_threadingTime * Constants.THREADING_WIND_FREQ * Mathf.PI * 2f) * windStrength;
-        pos.x += windDrift * dt;
-
-        pos.x = Mathf.Clamp(pos.x, -5f, 5f);
-
-        // Ease Y toward hover height (above stick top)
-        float hoverTarget = Constants.THREADING_HOVER_Y;
-        pos.y = Mathf.Lerp(pos.y, hoverTarget, 3f * dt);
-
-        transform.position = pos;
-
-        // Scale up for top-down visibility
-        transform.localScale = Vector3.Lerp(transform.localScale, Vector3.one * 1.3f, 4f * dt);
-
-        // Gentle flat rotation — keep ring horizontal for visibility, slow spin
-        _spinAngle += 30f * dt;
-        Quaternion targetRot = Quaternion.Euler(0f, _spinAngle, 0f);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 5f * dt);
-
-        // Speed multiplier stays low during threading (for camera/effects)
-        SpeedMultiplier = 0.3f;
+        // Same movement as playing — ring doesn't stop
+        UpdatePlaying();
     }
 
     /// <summary>
@@ -370,7 +320,7 @@ public class RingController : MonoBehaviour
     }
 
     /// <summary>
-    /// Fail animation: ring tumbles and falls to ground, bounces, settles.
+    /// Fail animation: ring falls to ground with heavy impact, bounces, settles.
     /// </summary>
     private void UpdateFail()
     {
@@ -379,32 +329,34 @@ public class RingController : MonoBehaviour
 
         Vector3 pos = transform.position;
 
-        // Gravity
-        _failVelocityY += -12f * dt;
-        _failVelocityY = Mathf.Max(_failVelocityY, -15f); // terminal velocity
+        // Strong gravity — feels heavy
+        _failVelocityY += -18f * dt;
+        _failVelocityY = Mathf.Max(_failVelocityY, -20f);
 
         pos.y += _failVelocityY * dt;
         pos.x += _failVelocityX * dt;
 
-        // Dampen horizontal drift
-        _failVelocityX *= Mathf.Pow(0.98f, dt * 60f);
+        // Keep moving forward a bit
+        pos.z -= _forwardSpeed * 0.3f * dt;
 
-        // Ground bounce
-        float groundY = Constants.RING_TUBE;
+        _failVelocityX *= Mathf.Pow(0.96f, dt * 60f);
+
+        // Ground level — ring radius so it sits on top of ground visibly
+        float groundY = Constants.RING_RADIUS;
         if (pos.y <= groundY)
         {
             pos.y = groundY;
             _failHitGround = true;
             _failBounceCount++;
 
-            float restitution = 0.3f * Mathf.Pow(0.25f, _failBounceCount - 1);
+            // Decent bounces — first one is visible
+            float restitution = 0.4f * Mathf.Pow(0.3f, _failBounceCount - 1);
 
-            if (Mathf.Abs(_failVelocityY) > 0.4f)
+            if (Mathf.Abs(_failVelocityY) > 0.5f)
             {
                 _failVelocityY = -_failVelocityY * restitution;
-                // Dampen tumble on impact
-                _failTumbleSpeedX *= 0.4f;
-                _failTumbleSpeedZ *= 0.4f;
+                _failTumbleSpeedX *= 0.5f;
+                _failTumbleSpeedZ *= 0.5f;
             }
             else
             {
@@ -414,23 +366,21 @@ public class RingController : MonoBehaviour
 
         transform.position = pos;
 
-        // Tumble rotation while falling
+        // Tumble while in the air
         if (!_failHitGround)
         {
-            // Chaotic tumble in the air
             _failTumbleX += _failTumbleSpeedX * dt;
             _failTumbleZ += _failTumbleSpeedZ * dt;
         }
         else
         {
-            // After hitting ground, ease toward flat
-            _failTumbleX = Mathf.Lerp(_failTumbleX, 0f, 3f * dt);
+            // Settle flat after ground hit
+            _failTumbleX = Mathf.Lerp(_failTumbleX, 90f, 3f * dt); // land on side
             _failTumbleZ = Mathf.Lerp(_failTumbleZ, 0f, 3f * dt);
-            _failTumbleSpeedX = Mathf.Lerp(_failTumbleSpeedX, 0f, 4f * dt);
-            _failTumbleSpeedZ = Mathf.Lerp(_failTumbleSpeedZ, 0f, 4f * dt);
+            _failTumbleSpeedX = Mathf.Lerp(_failTumbleSpeedX, 0f, 5f * dt);
+            _failTumbleSpeedZ = Mathf.Lerp(_failTumbleSpeedZ, 0f, 5f * dt);
         }
 
-        // Spin slows over ~2 seconds
         float spinDecay = Mathf.Max(0f, 1f - _failTime * 0.5f);
         _spinAngle += 180f * spinDecay * dt;
 

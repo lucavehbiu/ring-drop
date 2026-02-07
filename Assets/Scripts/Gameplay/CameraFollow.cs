@@ -43,13 +43,9 @@ public class CameraFollow : MonoBehaviour
         Vector3 ringPos = ring.transform.position;
         float dt = Time.deltaTime;
 
-        if (state == GameManager.GameState.Playing)
+        if (state == GameManager.GameState.Playing || state == GameManager.GameState.Threading)
         {
             UpdatePlayingCamera(ringPos, dt);
-        }
-        else if (state == GameManager.GameState.Threading)
-        {
-            UpdateThreadingCamera(ringPos, dt);
         }
         else if (state == GameManager.GameState.Menu)
         {
@@ -71,7 +67,7 @@ public class CameraFollow : MonoBehaviour
         }
         else if (state == GameManager.GameState.Fail)
         {
-            UpdateFailCamera(ringPos, dt);
+            UpdatePlayingCamera(ringPos, dt);
         }
         else if (state == GameManager.GameState.Success)
         {
@@ -83,9 +79,8 @@ public class CameraFollow : MonoBehaviour
     private void UpdatePlayingCamera(Vector3 ringPos, float dt)
     {
         // Target position: behind and above the ring
-        float speedMult = ring.SpeedMultiplier;
-        float offsetY = Constants.CAM_OFFSET_Y + (1f - speedMult) * 1f;
-        float offsetZ = Constants.CAM_OFFSET_Z + (1f - speedMult) * 2f;
+        float offsetY = Constants.CAM_OFFSET_Y;
+        float offsetZ = Constants.CAM_OFFSET_Z;
 
         Vector3 targetPos = new Vector3(
             ringPos.x * 0.4f,
@@ -122,45 +117,8 @@ public class CameraFollow : MonoBehaviour
         float smoothRoll = Mathf.Lerp(currentRoll, targetRoll, 5f * dt);
         transform.Rotate(0f, 0f, smoothRoll - currentRoll, Space.Self);
 
-        // FOV speed effect
-        float targetFOV = Constants.BASE_FOV + ring.SpeedMultiplier * 4f + (1f - ring.SpeedMultiplier) * -6f;
-        _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, targetFOV, 2f * dt);
-    }
-
-    /// <summary>
-    /// Threading camera: smooth transition to near-vertical top-down view.
-    /// Positioned above and slightly behind the stick, looking down at the
-    /// ring and stick for precision alignment.
-    /// </summary>
-    private void UpdateThreadingCamera(Vector3 ringPos, float dt)
-    {
-        Vector3 stickPos = stick.transform.position;
-
-        // Camera target: above the stick, slightly behind for depth perception
-        Vector3 targetPos = new Vector3(
-            stickPos.x,
-            stickPos.y + Constants.THREADING_CAM_HEIGHT,
-            stickPos.z + 1f
-        );
-
-        // Smooth transition from wherever camera currently is
-        transform.position = Vector3.Lerp(
-            transform.position,
-            targetPos,
-            Constants.THREADING_CAM_LERP * dt
-        );
-
-        // Look down at the ring (slightly above stick base so we see the full pole)
-        Vector3 lookTarget = new Vector3(
-            ringPos.x * 0.5f + stickPos.x * 0.5f,
-            stickPos.y + 1f,
-            stickPos.z
-        );
-        Quaternion targetRot = Quaternion.LookRotation(lookTarget - transform.position);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Constants.THREADING_CAM_LERP * dt);
-
-        // Tighten FOV for precision feel
-        _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, Constants.THREADING_FOV, 2f * dt);
+        // Keep FOV constant
+        _cam.fieldOfView = Constants.BASE_FOV;
     }
 
     /// <summary>
@@ -185,21 +143,4 @@ public class CameraFollow : MonoBehaviour
         _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, 50f, 2f * dt);
     }
 
-    /// <summary>
-    /// Fail camera: pull back to watch ring tumble and fall.
-    /// </summary>
-    private void UpdateFailCamera(Vector3 ringPos, float dt)
-    {
-        // Position slightly above and behind ring to watch the fall
-        Vector3 targetPos = new Vector3(
-            ringPos.x * 0.3f,
-            Mathf.Max(ringPos.y + 3f, 3f),
-            ringPos.z + 5f
-        );
-
-        transform.position = Vector3.Lerp(transform.position, targetPos, 2f * dt);
-        transform.LookAt(ringPos);
-
-        _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, 55f, 2f * dt);
-    }
 }

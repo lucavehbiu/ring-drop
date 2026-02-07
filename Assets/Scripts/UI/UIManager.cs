@@ -147,59 +147,13 @@ public class UIManager : MonoBehaviour
             _smallStyle.alignment = TextAnchor.UpperRight;
         }
 
-        // --- Threading countdown timer ---
+        // --- Threading prompt ---
         if (gm.State == GameManager.GameState.Threading)
         {
-            float timeLeft = gm.ThreadingTimeLeft;
-
-            // Color: green → gold → red as time runs out
-            Color timerColor;
-            if (timeLeft > 2f)
-                timerColor = Constants.GREEN;
-            else if (timeLeft > 1f)
-                timerColor = Constants.GOLD;
-            else
-                timerColor = Constants.RED;
-
-            // Pulse effect when low
-            float pulse = 1f;
-            if (timeLeft < 1.5f)
-                pulse = 1f + Mathf.Sin(Time.time * 12f) * 0.15f;
-
-            _timerStyle.fontSize = Mathf.RoundToInt(96 * pulse);
-            _timerStyle.normal.textColor = timerColor;
-
-            // Big countdown number at top
-            GUI.Label(new Rect(0, h * 0.08f, w, 120), $"{timeLeft:F1}", _timerStyle);
-
-            // Alignment guide — show how far off center
-            float ringX = FindAnyObjectByType<RingController>()?.transform.position.x ?? 0f;
-            float stickX = gm.Stick != null ? gm.Stick.transform.position.x : 0f;
-            float offset = ringX - stickX;
-
-            // Arrow indicator: ← CENTER → or ✓ when aligned
-            string alignText;
-            Color alignColor;
-            float tolerance = LevelConfig.Get(gm.Level).tolerance;
-
-            if (Mathf.Abs(offset) < tolerance)
-            {
-                alignText = "ALIGNED";
-                alignColor = Constants.GREEN;
-            }
-            else if (offset < 0)
-            {
-                alignText = "STEER RIGHT >>>";
-                alignColor = Constants.GOLD;
-            }
-            else
-            {
-                alignText = "<<< STEER LEFT";
-                alignColor = Constants.GOLD;
-            }
-
-            _subtitleStyle.normal.textColor = alignColor;
-            GUI.Label(new Rect(0, h * 0.85f, w, 50), alignText, _subtitleStyle);
+            float pulse = 1f + Mathf.Sin(Time.time * 8f) * 0.08f;
+            _timerStyle.fontSize = Mathf.RoundToInt(64 * pulse);
+            _timerStyle.normal.textColor = Constants.GOLD;
+            GUI.Label(new Rect(0, h * 0.08f, w, 100), "TAP TO DROP!", _timerStyle);
         }
 
         // Center feedback text (animated)

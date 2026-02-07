@@ -31,8 +31,6 @@ public static class Constants
     public const float VALID_Y_MAX   = STICK_HEIGHT - 0.3f;
 
     // Gameplay
-    public const float SLOWMO_DIST   = 8f;
-    public const float SLOWMO_MIN    = 0.35f;
     public const float SHIP_HIT_DIST = 0.9f;
     public const float SHIP_WARN_DIST = 1.8f;
 
@@ -49,20 +47,8 @@ public static class Constants
     public const float TILT_PITCH    = 2.5f;    // pitch from vertical speed (was 5)
     public const float TILT_ROLL     = 8f;      // roll from horizontal speed (was 15)
 
-    // Threading phase — precision drop window
+    // Threading phase
     public const float THREADING_TRIGGER_DIST = 6f;    // Z distance to stick to enter threading
-    public const float THREADING_DURATION     = 3.0f;  // seconds to align and drop
-    public const float THREADING_DRIFT        = 0.4f;  // slow forward drift during threading
-    public const float THREADING_STEER        = 5f;    // precise steering force
-    public const float THREADING_HOVER_Y      = STICK_HEIGHT + 1f;  // hover height above stick top
-    public const float THREADING_CAM_HEIGHT   = 7f;    // camera height for top-down view (closer for visibility)
-    public const float THREADING_CAM_LERP     = 1.3f;  // camera transition speed (~0.8s smooth)
-    public const float THREADING_FOV          = 55f;   // wider FOV for ring visibility
-
-    // Threading wind — drift that pushes ring off-center
-    public const float THREADING_WIND_BASE    = 0.3f;   // passive drift during threading
-    public const float THREADING_WIND_PER_LVL = 0.08f;  // additional drift per level
-    public const float THREADING_WIND_FREQ    = 0.8f;   // oscillation frequency
 
     // Colors (neon galaxy palette)
     public static readonly Color CYAN    = new Color(0f, 1f, 1f);
