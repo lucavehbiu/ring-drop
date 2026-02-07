@@ -4,6 +4,81 @@
 
 ---
 
+## CURRENT STATUS (Feb 2026)
+
+### What's Built & Working
+
+The Unity 6 LTS project is up and running with all core gameplay:
+
+**Core (6 files):**
+- `GameManager.cs` — State machine: Menu → Countdown → Playing → **Threading** → Success/Fail → GameOver
+- `LevelConfig.cs` — Progressive difficulty: stick distance, speed, gravity, tolerance, wind, ships
+- `SceneBootstrap.cs` — Procedural scene: all game objects created from code (no prefabs yet)
+- `ScoreManager.cs` — PlayerPrefs-based score persistence
+
+**Gameplay (5 files):**
+- `RingController.cs` — Three-phase ring:
+  - **Flying** (Playing): gravity + lift + wind + steering + slow-mo near stick
+  - **Threading** (new): ring hovers above stick, player has 3s to align and tap to drop
+  - **Success**: physics-based freefall down stick, bounce with restitution, spring-damper wobble
+- `CameraFollow.cs` — Three camera modes:
+  - **Chase cam** (Playing): smooth lerp follow, barrel roll, FOV speed effect
+  - **Top-down** (Threading): near-vertical view above stick for precision alignment
+  - **Orbit** (Success): slow orbit around stick watching ring fall
+- `StickController.cs` — Procedural stick with guide bands
+- `GameInput.cs` — New Input System 1.18.0: keyboard/mouse/touch + WasTapped for threading drop
+- `WindSystem.cs` — Sinusoidal wind + random gusts
+
+**UI (1 file):**
+- `UIManager.cs` — OnGUI-based: score, level, combo, feedback text ("DROP IT!", "GOOD JOB!", etc.), threading countdown timer with color pulse (green→gold→red), alignment guide arrows
+
+**Util (4 files):**
+- `Constants.cs` — All tuning values (physics, threading, camera, colors)
+- `TorusMeshGenerator.cs` — Procedural torus mesh (48×24 segments)
+- `GoldenRatio.cs` — φ-based design system (touch zones, spacing, typography)
+- `MathHelpers.cs` — Math utilities
+
+**Visual:**
+- 300-star combined mesh starfield (single draw call)
+- 4 nebula point lights (purple, blue, magenta, teal)
+- Exponential fog (0.008 density)
+- 2 directional lights + ring point light
+- Semi-reflective ground plane
+
+### Game Flow (current)
+
+```
+MENU → tap → COUNTDOWN (2.5s) → PLAYING (fly toward stick)
+  → ring enters threading range (6 units from stick)
+  → THREADING: camera goes top-down, 3s countdown, steer to align
+    → tap to drop + aligned → SUCCESS (ring falls down stick, bounces, settles) → next level
+    → tap to drop + misaligned → FAIL → GAME OVER
+    → 3s timeout → FAIL → GAME OVER
+  → hit ground during flight → FAIL → GAME OVER
+```
+
+### What's NOT Built Yet (from original plan)
+
+- [ ] Enemy ships (ShipSpawner, ShipController, CollisionDetector)
+- [ ] Speed streaks, success burst particles, explosions
+- [ ] CRT post-processing overlay (scanlines + vignette)
+- [ ] Procedural audio (chiptune oscillator synthesis)
+- [ ] Haptic feedback
+- [ ] Canvas UI (currently using OnGUI — works but not production)
+- [ ] Tutorial hints
+- [ ] App icon, splash screen
+- [ ] iOS/Android production builds
+- [ ] Online leaderboard
+- [ ] Ads/monetization
+
+### Git
+
+- **Repo:** https://github.com/lucavehbiu/ring-drop
+- **Branch:** main
+- **Note:** Force push needed from local terminal (`git push --force origin main`)
+
+---
+
 ## THE VERDICT
 
 ### **Use Unity. Here's why.**

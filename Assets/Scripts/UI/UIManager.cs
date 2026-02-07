@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Minimal UI using OnGUI — shows score, level, state feedback.
+/// Minimal UI using OnGUI — shows score, level, state feedback, threading timer.
 /// Quick and dependency-free. Will upgrade to Canvas UI later.
 /// </summary>
 public class UIManager : MonoBehaviour
@@ -10,6 +10,7 @@ public class UIManager : MonoBehaviour
     private GUIStyle _scoreStyle;
     private GUIStyle _subtitleStyle;
     private GUIStyle _smallStyle;
+    private GUIStyle _timerStyle;
     private float _feedbackAlpha;
     private string _feedbackText = "";
     private float _feedbackScale = 1f;
@@ -54,6 +55,14 @@ public class UIManager : MonoBehaviour
         };
         _smallStyle.normal.textColor = new Color(1f, 1f, 1f, 0.5f);
 
+        _timerStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 96,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter
+        };
+        _timerStyle.normal.textColor = Constants.GREEN;
+
         _stylesReady = true;
     }
 
@@ -66,6 +75,9 @@ public class UIManager : MonoBehaviour
                 break;
             case GameManager.GameState.Playing:
                 ShowFeedback("GO!", Constants.GREEN);
+                break;
+            case GameManager.GameState.Threading:
+                ShowFeedback("DROP IT!", Constants.GOLD);
                 break;
             case GameManager.GameState.Success:
                 string[] cheers = { "GOOD JOB!", "PERFECT!", "NICE!", "AMAZING!", "SMOOTH!" };
@@ -133,6 +145,61 @@ public class UIManager : MonoBehaviour
             _smallStyle.alignment = TextAnchor.MiddleCenter;
             GUI.Label(new Rect(0, h * 0.55f, w, 40), $"HIGH SCORE: {gm.HighScore}", _smallStyle);
             _smallStyle.alignment = TextAnchor.UpperRight;
+        }
+
+        // --- Threading countdown timer ---
+        if (gm.State == GameManager.GameState.Threading)
+        {
+            float timeLeft = gm.ThreadingTimeLeft;
+
+            // Color: green → gold → red as time runs out
+            Color timerColor;
+            if (timeLeft > 2f)
+                timerColor = Constants.GREEN;
+            else if (timeLeft > 1f)
+                timerColor = Constants.GOLD;
+            else
+                timerColor = Constants.RED;
+
+            // Pulse effect when low
+            float pulse = 1f;
+            if (timeLeft < 1.5f)
+                pulse = 1f + Mathf.Sin(Time.time * 12f) * 0.15f;
+
+            _timerStyle.fontSize = Mathf.RoundToInt(96 * pulse);
+            _timerStyle.normal.textColor = timerColor;
+
+            // Big countdown number at top
+            GUI.Label(new Rect(0, h * 0.08f, w, 120), $"{timeLeft:F1}", _timerStyle);
+
+            // Alignment guide — show how far off center
+            float ringX = FindAnyObjectByType<RingController>()?.transform.position.x ?? 0f;
+            float stickX = gm.Stick != null ? gm.Stick.transform.position.x : 0f;
+            float offset = ringX - stickX;
+
+            // Arrow indicator: ← CENTER → or ✓ when aligned
+            string alignText;
+            Color alignColor;
+            float tolerance = LevelConfig.Get(gm.Level).tolerance;
+
+            if (Mathf.Abs(offset) < tolerance)
+            {
+                alignText = "ALIGNED";
+                alignColor = Constants.GREEN;
+            }
+            else if (offset < 0)
+            {
+                alignText = "STEER RIGHT >>>";
+                alignColor = Constants.GOLD;
+            }
+            else
+            {
+                alignText = "<<< STEER LEFT";
+                alignColor = Constants.GOLD;
+            }
+
+            _subtitleStyle.normal.textColor = alignColor;
+            GUI.Label(new Rect(0, h * 0.85f, w, 50), alignText, _subtitleStyle);
         }
 
         // Center feedback text (animated)

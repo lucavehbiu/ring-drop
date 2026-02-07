@@ -1,9 +1,10 @@
 using UnityEngine;
 
 /// <summary>
-/// Ring physics controller. The ring flies forward automatically.
-/// Player holds to rise (fights gravity), steers left/right.
-/// On success, real physics: freefall down the stick, bounce off base, wobble, settle.
+/// Ring physics controller.
+/// Phase 1 (Playing): Ring flies forward, player holds to rise, steers left/right.
+/// Phase 2 (Threading): Ring hovers near stick, player aligns and taps to drop.
+/// Phase 3 (Success): Real physics: freefall down the stick, bounce off base, wobble, settle.
 /// Ring is HORIZONTAL (flat like a frisbee) — hole faces up for stick threading.
 /// </summary>
 public class RingController : MonoBehaviour
@@ -19,6 +20,9 @@ public class RingController : MonoBehaviour
     private float _targetZ;
     private float _targetX;
     private float _playTime;
+
+    // Threading phase
+    private float _threadingTime;
 
     // Success animation — physics-based fall
     private float _successTime;
@@ -50,12 +54,21 @@ public class RingController : MonoBehaviour
         _windGust = 0f;
         _playTime = 0f;
         _successTime = 0f;
+        _threadingTime = 0f;
         _spinAngle = 0f;
         _bounceCount = 0;
 
         transform.position = new Vector3(0f, 4.5f, 2f);
         transform.rotation = Quaternion.identity;
         _vx = 0f;
+        _vy = 0f;
+    }
+
+    /// <summary>Called by GameManager when threading state starts.</summary>
+    public void BeginThreading()
+    {
+        _threadingTime = 0f;
+        // Kill vertical velocity — ring should hover smoothly
         _vy = 0f;
     }
 
@@ -80,6 +93,8 @@ public class RingController : MonoBehaviour
 
         if (gm.State == GameManager.GameState.Playing)
             UpdatePlaying();
+        else if (gm.State == GameManager.GameState.Threading)
+            UpdateThreading();
         else if (gm.State == GameManager.GameState.Success)
             UpdateSuccessPhysics();
         else if (gm.State == GameManager.GameState.Countdown)
@@ -159,19 +174,53 @@ public class RingController : MonoBehaviour
         if (pos.y < -0.3f)
             gm.OnFail("ground");
 
-        // Check fail/success: reached stick Z
-        if (pos.z <= _targetZ)
+        // Check: close enough to stick → enter threading phase
+        float distZ = pos.z - _targetZ;
+        if (distZ <= Constants.THREADING_TRIGGER_DIST && distZ > -1f)
         {
-            float hDist = Mathf.Abs(pos.x - _targetX);
-            bool inAlignment = hDist < _cfg.tolerance;
-            bool inHeight = pos.y >= Constants.VALID_Y_MIN && pos.y <= Constants.VALID_Y_MAX;
-
-            gm.OnRingReachedStick(inAlignment && inHeight);
+            gm.EnterThreading();
         }
 
         // Soft ceiling
         if (pos.y > 12f)
             _vy = -2f;
+    }
+
+    /// <summary>
+    /// Threading phase: ring hovers near stick, player steers to align.
+    /// Drop is handled by GameManager checking input in Update().
+    /// </summary>
+    private void UpdateThreading()
+    {
+        var input = GameInput.Instance;
+        if (input == null) return;
+
+        float dt = Time.fixedDeltaTime;
+        _threadingTime += dt;
+
+        Vector3 pos = transform.position;
+
+        // Slow forward drift (ring slowly passes if player doesn't drop)
+        pos.z -= Constants.THREADING_DRIFT * dt;
+
+        // Precise horizontal steering
+        if (input.SteerDirection != 0f)
+            pos.x += input.SteerDirection * Constants.THREADING_STEER * dt;
+        pos.x = Mathf.Clamp(pos.x, -5f, 5f);
+
+        // Ease Y toward hover height (above stick top)
+        float hoverTarget = Constants.THREADING_HOVER_Y;
+        pos.y = Mathf.Lerp(pos.y, hoverTarget, 3f * dt);
+
+        transform.position = pos;
+
+        // Gentle flat rotation — keep ring horizontal for visibility, slow spin
+        _spinAngle += 30f * dt;
+        Quaternion targetRot = Quaternion.Euler(0f, _spinAngle, 0f);
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 5f * dt);
+
+        // Speed multiplier stays low during threading (for camera/effects)
+        SpeedMultiplier = 0.3f;
     }
 
     /// <summary>

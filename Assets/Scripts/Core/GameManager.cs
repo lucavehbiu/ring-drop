@@ -5,12 +5,15 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// Central game state machine. Controls flow from menu to gameplay to game over.
 /// Singleton — access via GameManager.Instance.
+///
+/// New flow: Playing → Threading (3s drop window) → Success/Fail
+/// The ring approaches the stick, camera goes top-down, player aligns and taps to drop.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    public enum GameState { Menu, Countdown, Playing, Success, Fail, GameOver }
+    public enum GameState { Menu, Countdown, Playing, Threading, Success, Fail, GameOver }
 
     [Header("State")]
     public GameState State { get; private set; } = GameState.Menu;
@@ -32,11 +35,13 @@ public class GameManager : MonoBehaviour
     private float _countdownTimer;
     private float _successTimer;
     private float _failTimer;
+    private float _threadingTimer;
 
     public int Score => _score;
     public int Level => _level;
     public int Combo => _combo;
     public int HighScore => _highScore;
+    public float ThreadingTimeLeft => Mathf.Max(0f, Constants.THREADING_DURATION - _threadingTimer);
 
     public StickController Stick => stick;
 
@@ -109,9 +114,27 @@ public class GameManager : MonoBehaviour
                     SetState(GameState.Playing);
                 break;
 
+            case GameState.Threading:
+                _threadingTimer += Time.deltaTime;
+
+                // Check for drop input (tap/press = drop the ring)
+                var input = GameInput.Instance;
+                if (input != null && input.WasTapped)
+                {
+                    float hDist = Mathf.Abs(ring.transform.position.x - stick.transform.position.x);
+                    var cfg = LevelConfig.Get(_level);
+                    bool aligned = hDist < cfg.tolerance;
+                    OnRingDrop(aligned);
+                }
+
+                // Timeout — ring drifts past, you lose
+                if (_threadingTimer >= Constants.THREADING_DURATION)
+                    OnFail("timeout");
+                break;
+
             case GameState.Success:
                 _successTimer += Time.deltaTime;
-                if (_successTimer >= 2.5f) // longer to allow slide animation + celebration
+                if (_successTimer >= 2.5f)
                 {
                     _level++;
                     OnLevelChanged?.Invoke(_level);
@@ -132,9 +155,19 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    public void OnRingReachedStick(bool aligned)
+    /// <summary>Called by RingController when ring enters threading range.</summary>
+    public void EnterThreading()
     {
         if (State != GameState.Playing) return;
+        _threadingTimer = 0f;
+        SetState(GameState.Threading);
+        ring.BeginThreading();
+    }
+
+    /// <summary>Called when player taps to drop during threading.</summary>
+    public void OnRingDrop(bool aligned)
+    {
+        if (State != GameState.Threading) return;
 
         if (aligned)
         {
@@ -149,8 +182,6 @@ public class GameManager : MonoBehaviour
             OnScoreChanged?.Invoke(_score);
             _successTimer = 0f;
             SetState(GameState.Success);
-
-            // Trigger slide-down animation on ring
             ring.BeginSuccessAnimation(stick.transform.position);
         }
         else
@@ -161,9 +192,10 @@ public class GameManager : MonoBehaviour
 
     public void OnFail(string reason)
     {
-        if (State != GameState.Playing) return;
+        if (State != GameState.Playing && State != GameState.Threading) return;
         _combo = 0;
         _failTimer = 0f;
+        Debug.Log($"[RingDrop] Fail reason: {reason}");
         SetState(GameState.Fail);
     }
 

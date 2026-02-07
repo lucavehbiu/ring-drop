@@ -49,6 +49,16 @@ public static class Constants
     public const float TILT_PITCH    = 2.5f;    // pitch from vertical speed (was 5)
     public const float TILT_ROLL     = 8f;      // roll from horizontal speed (was 15)
 
+    // Threading phase — precision drop window
+    public const float THREADING_TRIGGER_DIST = 6f;    // Z distance to stick to enter threading
+    public const float THREADING_DURATION     = 3.0f;  // seconds to align and drop
+    public const float THREADING_DRIFT        = 0.4f;  // slow forward drift during threading
+    public const float THREADING_STEER        = 5f;    // precise steering force
+    public const float THREADING_HOVER_Y      = STICK_HEIGHT + 1f;  // hover height above stick top
+    public const float THREADING_CAM_HEIGHT   = 12f;   // camera height for top-down view
+    public const float THREADING_CAM_LERP     = 2.5f;  // camera transition speed
+    public const float THREADING_FOV          = 45f;   // tighter FOV for focus
+
     // Colors (neon galaxy palette)
     public static readonly Color CYAN    = new Color(0f, 1f, 1f);
     public static readonly Color MAGENTA = new Color(1f, 0f, 1f);

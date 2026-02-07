@@ -17,6 +17,9 @@ public class GameInput : MonoBehaviour
     /// <summary>-1 = left, 0 = center, 1 = right</summary>
     public float SteerDirection { get; private set; }
 
+    /// <summary>True for one frame when player taps/presses (for threading drop)</summary>
+    public bool WasTapped { get; private set; }
+
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -27,6 +30,7 @@ public class GameInput : MonoBehaviour
     {
         IsHolding = false;
         SteerDirection = 0f;
+        WasTapped = false;
 
         // --- Keyboard (New Input System) ---
         var kb = Keyboard.current;
@@ -38,6 +42,8 @@ public class GameInput : MonoBehaviour
                 SteerDirection = -1f;
             if (kb.dKey.isPressed || kb.rightArrowKey.isPressed)
                 SteerDirection = 1f;
+            if (kb.spaceKey.wasPressedThisFrame || kb.downArrowKey.wasPressedThisFrame)
+                WasTapped = true;
         }
 
         // --- Touch input (overrides keyboard if active) ---
@@ -54,6 +60,8 @@ public class GameInput : MonoBehaviour
             else if (normalized > 1f - GoldenRatio.ZONE_SIDE)
                 SteerDirection = 1f;
         }
+        if (ts != null && ts.primaryTouch.press.wasPressedThisFrame)
+            WasTapped = true;
 
         // --- Mouse (editor testing) ---
         var mouse = Mouse.current;
@@ -67,5 +75,7 @@ public class GameInput : MonoBehaviour
             else if (normalized > 1f - GoldenRatio.ZONE_SIDE)
                 SteerDirection = 1f;
         }
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            WasTapped = true;
     }
 }
