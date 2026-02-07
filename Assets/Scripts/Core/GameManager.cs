@@ -38,6 +38,8 @@ public class GameManager : MonoBehaviour
     public int Combo => _combo;
     public int HighScore => _highScore;
 
+    public StickController Stick => stick;
+
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -47,18 +49,16 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        // Auto-wire references if not assigned in Inspector (procedural bootstrap)
         if (ring == null) ring = FindAnyObjectByType<RingController>();
         if (stick == null) stick = FindAnyObjectByType<StickController>();
         if (cam == null) cam = FindAnyObjectByType<CameraFollow>();
 
         if (ring == null || stick == null || cam == null)
-            Debug.LogError("[RingDrop] GameManager missing references! Ring=" + ring + " Stick=" + stick + " Cam=" + cam);
+            Debug.LogError("[RingDrop] GameManager missing references!");
         else
-            Debug.Log("[RingDrop] GameManager wired: Ring, Stick, Camera ready. Press Space or Click to start.");
+            Debug.Log("[RingDrop] Ready. Press Space or Click to start.");
     }
 
-    /// <summary>Check for start/restart input in Menu and GameOver states.</summary>
     private bool StartInputPressed()
     {
         var kb = Keyboard.current;
@@ -105,13 +105,13 @@ public class GameManager : MonoBehaviour
 
             case GameState.Countdown:
                 _countdownTimer += Time.deltaTime;
-                if (_countdownTimer >= 2.5f)  // longer countdown so player can orient
+                if (_countdownTimer >= 2.5f)
                     SetState(GameState.Playing);
                 break;
 
             case GameState.Success:
                 _successTimer += Time.deltaTime;
-                if (_successTimer >= 1.5f)
+                if (_successTimer >= 2.5f) // longer to allow slide animation + celebration
                 {
                     _level++;
                     OnLevelChanged?.Invoke(_level);
@@ -121,7 +121,7 @@ public class GameManager : MonoBehaviour
 
             case GameState.Fail:
                 _failTimer += Time.deltaTime;
-                if (_failTimer >= 1f)
+                if (_failTimer >= 1.5f)
                     SetState(GameState.GameOver);
                 break;
 
@@ -149,6 +149,9 @@ public class GameManager : MonoBehaviour
             OnScoreChanged?.Invoke(_score);
             _successTimer = 0f;
             SetState(GameState.Success);
+
+            // Trigger slide-down animation on ring
+            ring.BeginSuccessAnimation(stick.transform.position);
         }
         else
         {
@@ -167,7 +170,7 @@ public class GameManager : MonoBehaviour
     private void SetState(GameState newState)
     {
         State = newState;
-        Debug.Log($"[RingDrop] State → {newState}");
+        Debug.Log($"[RingDrop] State -> {newState}");
         OnStateChanged?.Invoke(newState);
     }
 }
