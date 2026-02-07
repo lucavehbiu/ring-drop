@@ -6,8 +6,7 @@ using UnityEngine.InputSystem;
 /// Central game state machine. Controls flow from menu to gameplay to game over.
 /// Singleton — access via GameManager.Instance.
 ///
-/// New flow: Playing → Threading (3s drop window) → Success/Fail
-/// The ring approaches the stick, camera goes top-down, player aligns and taps to drop.
+/// Flow: Playing → ring flies over stick → Success (caught) / Fail (missed)
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -35,13 +34,10 @@ public class GameManager : MonoBehaviour
     private float _countdownTimer;
     private float _successTimer;
     private float _failTimer;
-    private float _threadingTimer;
-
     public int Score => _score;
     public int Level => _level;
     public int Combo => _combo;
     public int HighScore => _highScore;
-    public float ThreadingTimeLeft => 0f;
 
     public StickController Stick => stick;
 
@@ -114,24 +110,6 @@ public class GameManager : MonoBehaviour
                     SetState(GameState.Playing);
                 break;
 
-            case GameState.Threading:
-                // Check for drop input (tap/press = drop the ring)
-                var input = GameInput.Instance;
-                if (input != null && input.WasTapped)
-                {
-                    float hDist = Mathf.Abs(ring.transform.position.x - stick.transform.position.x);
-                    var cfg = LevelConfig.Get(_level);
-                    bool aligned = hDist < cfg.tolerance;
-                    OnRingDrop(aligned);
-                }
-
-                // Ring passed beyond stick — missed it
-                float ringZ = ring.transform.position.z;
-                float stickZ = stick.transform.position.z;
-                if (ringZ < stickZ - 2f)
-                    OnFail("missed");
-                break;
-
             case GameState.Success:
                 _successTimer += Time.deltaTime;
                 if (_successTimer >= 2.5f)
@@ -155,45 +133,28 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>Called by RingController when ring enters threading range.</summary>
-    public void EnterThreading()
+    /// <summary>Called by RingController when ring lands on ground with stick inside.</summary>
+    public void OnSuccess()
     {
         if (State != GameState.Playing) return;
-        _threadingTimer = 0f;
-        SetState(GameState.Threading);
-        ring.BeginThreading();
-    }
-
-    /// <summary>Called when player taps to drop during threading.</summary>
-    public void OnRingDrop(bool aligned)
-    {
-        if (State != GameState.Threading) return;
-
-        if (aligned)
+        _combo++;
+        int pts = 100 + (_combo - 1) * 50 + (_level - 1) * 30;
+        _score += pts;
+        if (_score > _highScore)
         {
-            _combo++;
-            int pts = 100 + (_combo - 1) * 50 + (_level - 1) * 30;
-            _score += pts;
-            if (_score > _highScore)
-            {
-                _highScore = _score;
-                PlayerPrefs.SetInt("HighScore", _highScore);
-            }
-            OnScoreChanged?.Invoke(_score);
-            _successTimer = 0f;
-            SetState(GameState.Success);
-            ring.BeginSuccessAnimation(stick.transform.position);
-            SFXManager.Instance?.PlaySuccess();
+            _highScore = _score;
+            PlayerPrefs.SetInt("HighScore", _highScore);
         }
-        else
-        {
-            OnFail("miss");
-        }
+        OnScoreChanged?.Invoke(_score);
+        _successTimer = 0f;
+        SetState(GameState.Success);
+        ring.BeginSuccessAnimation(stick.transform.position);
+        SFXManager.Instance?.PlaySuccess();
     }
 
     public void OnFail(string reason)
     {
-        if (State != GameState.Playing && State != GameState.Threading) return;
+        if (State != GameState.Playing) return;
         _combo = 0;
         _failTimer = 0f;
         Debug.Log($"[RingDrop] Fail reason: {reason}");

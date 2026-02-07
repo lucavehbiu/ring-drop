@@ -29,7 +29,7 @@ public static class LevelConfig
         {
             stickZ     = -(20f + level * 3f),                                          // closer at start (was -25)
             stickX     = level <= 1 ? 0f : Mathf.Sin(level * 1.4f) * Mathf.Min(level * 0.3f, 2.2f),
-            speed      = 5.5f + level * 0.5f,                                          // slower start (was 8)
+            speed      = 5.5f + level * 0.4f,                                            // moderate pace
             gravity    = -5.5f - Mathf.Max(0, level - 2) * 0.4f,                       // gentle at first, ramps from lvl 3
             tolerance  = Mathf.Max(0.22f, 0.55f - (level - 1) * 0.03f),                 // level 1 = 0.55, level 12+ = 0.22
             wind       = level <= 1 ? 0.1f : 0.2f + (level - 1) * 0.12f,               // almost no wind level 1

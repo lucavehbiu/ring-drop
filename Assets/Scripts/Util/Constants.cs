@@ -47,9 +47,6 @@ public static class Constants
     public const float TILT_PITCH    = 2.5f;    // pitch from vertical speed (was 5)
     public const float TILT_ROLL     = 8f;      // roll from horizontal speed (was 15)
 
-    // Threading phase
-    public const float THREADING_TRIGGER_DIST = 6f;    // Z distance to stick to enter threading
-
     // Colors (neon galaxy palette)
     public static readonly Color CYAN    = new Color(0f, 1f, 1f);
     public static readonly Color MAGENTA = new Color(1f, 0f, 1f);

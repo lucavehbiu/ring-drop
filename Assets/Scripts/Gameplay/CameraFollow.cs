@@ -1,12 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Smooth camera that follows the ring with:
-/// - Lerp-based position tracking (Playing)
-/// - Top-down precision view (Threading)
-/// - FOV speed effect (wider when fast, tighter in slow-mo)
-/// - Subtle barrel roll based on horizontal velocity
-/// - Look-ahead toward the stick as progress increases
+/// Smooth camera that follows the ring with lerp-based tracking,
+/// subtle barrel roll, and look-ahead toward the stick.
 /// </summary>
 public class CameraFollow : MonoBehaviour
 {
@@ -43,7 +39,7 @@ public class CameraFollow : MonoBehaviour
         Vector3 ringPos = ring.transform.position;
         float dt = Time.deltaTime;
 
-        if (state == GameManager.GameState.Playing || state == GameManager.GameState.Threading)
+        if (state == GameManager.GameState.Playing)
         {
             UpdatePlayingCamera(ringPos, dt);
         }
@@ -122,25 +118,25 @@ public class CameraFollow : MonoBehaviour
     }
 
     /// <summary>
-    /// Success camera: follows the ring falling down the stick from a nice angle.
+    /// Success camera: diagonal view of ring on the ground near the stick.
     /// </summary>
     private void UpdateSuccessCamera(Vector3 ringPos, float dt)
     {
         Vector3 stickPos = stick.transform.position;
 
-        // Orbit slightly around the stick for drama
-        float angle = Time.time * 0.5f;
+        // Diagonal angle — offset to side and above, not straight down or behind
         Vector3 targetPos = new Vector3(
-            stickPos.x + Mathf.Sin(angle) * 3f,
-            ringPos.y + 2f,
-            stickPos.z + Mathf.Cos(angle) * 3f + 2f
+            stickPos.x + 2.5f,
+            ringPos.y + 3f,
+            stickPos.z + 3f
         );
 
         transform.position = Vector3.Lerp(transform.position, targetPos, 3f * dt);
-        Vector3 lookAt = new Vector3(stickPos.x, ringPos.y * 0.5f + 0.5f, stickPos.z);
+        Vector3 lookAt = new Vector3(stickPos.x, ringPos.y * 0.3f + 0.3f, stickPos.z);
         transform.LookAt(lookAt);
 
-        _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, 50f, 2f * dt);
+        // No zoom — keep FOV constant
+        _cam.fieldOfView = Constants.BASE_FOV;
     }
 
 }

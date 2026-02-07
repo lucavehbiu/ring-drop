@@ -76,9 +76,6 @@ public class UIManager : MonoBehaviour
             case GameManager.GameState.Playing:
                 ShowFeedback("GO!", Constants.GREEN);
                 break;
-            case GameManager.GameState.Threading:
-                ShowFeedback("DROP IT!", Constants.GOLD);
-                break;
             case GameManager.GameState.Success:
                 string[] cheers = { "GOOD JOB!", "PERFECT!", "NICE!", "AMAZING!", "SMOOTH!" };
                 ShowFeedback(cheers[Random.Range(0, cheers.Length)], Constants.GOLD);
@@ -145,15 +142,6 @@ public class UIManager : MonoBehaviour
             _smallStyle.alignment = TextAnchor.MiddleCenter;
             GUI.Label(new Rect(0, h * 0.55f, w, 40), $"HIGH SCORE: {gm.HighScore}", _smallStyle);
             _smallStyle.alignment = TextAnchor.UpperRight;
-        }
-
-        // --- Threading prompt ---
-        if (gm.State == GameManager.GameState.Threading)
-        {
-            float pulse = 1f + Mathf.Sin(Time.time * 8f) * 0.08f;
-            _timerStyle.fontSize = Mathf.RoundToInt(64 * pulse);
-            _timerStyle.normal.textColor = Constants.GOLD;
-            GUI.Label(new Rect(0, h * 0.08f, w, 100), "TAP TO DROP!", _timerStyle);
         }
 
         // Center feedback text (animated)

@@ -21,17 +21,14 @@ public class RingController : MonoBehaviour
     private float _targetX;
     private float _playTime;
 
-    // Threading phase
-    private float _threadingTime;
+    // Ground landing detection
+    private bool _landed;
 
-    // Success animation — physics-based fall
+    // Success animation
     private float _successTime;
-    private float _fallVelocity;        // Y velocity during stick fall
-    private float _restY;               // where the ring settles (base of stick)
-    private bool _aligned;              // has the ring centered over the stick?
-    private float _wobbleAngle;         // tilt wobble during fall
-    private float _wobbleVelocity;      // angular velocity of wobble
-    private int _bounceCount;
+    private float _restY;
+    private float _wobbleAngle;
+    private float _wobbleVelocity;
     private float _spinAngle;
 
     // Fail animation — tumble and fall
@@ -65,9 +62,8 @@ public class RingController : MonoBehaviour
         _windGust = 0f;
         _playTime = 0f;
         _successTime = 0f;
-        _threadingTime = 0f;
+        _landed = false;
         _spinAngle = 0f;
-        _bounceCount = 0;
 
         transform.position = new Vector3(0f, 4.5f, 2f);
         transform.rotation = Quaternion.identity;
@@ -76,25 +72,14 @@ public class RingController : MonoBehaviour
         _vy = 0f;
     }
 
-    /// <summary>Called by GameManager when threading state starts. Ring keeps moving.</summary>
-    public void BeginThreading()
-    {
-        _threadingTime = 0f;
-    }
-
-    /// <summary>Called by GameManager when success state starts.</summary>
+    /// <summary>Called by GameManager when ring lands on stick successfully.</summary>
     public void BeginSuccessAnimation(Vector3 stickPos)
     {
         _successTime = 0f;
-        _fallVelocity = 0f;
-        _aligned = false;
         _wobbleAngle = 0f;
-        _wobbleVelocity = 0f;
-        _bounceCount = 0;
+        _wobbleVelocity = (Random.value - 0.5f) * 60f;
         transform.localScale = Vector3.one;
-
-        // Rest position: just above the stick base (base top ~0.12 + ring tube 0.11)
-        _restY = 0.22f;
+        _restY = Constants.RING_RADIUS;
     }
 
     /// <summary>Called by GameManager when fail state starts.</summary>
@@ -119,8 +104,6 @@ public class RingController : MonoBehaviour
 
         if (gm.State == GameManager.GameState.Playing)
             UpdatePlaying();
-        else if (gm.State == GameManager.GameState.Threading)
-            UpdateThreading();
         else if (gm.State == GameManager.GameState.Success)
             UpdateSuccessPhysics();
         else if (gm.State == GameManager.GameState.Fail)
@@ -195,16 +178,39 @@ public class RingController : MonoBehaviour
         );
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 8f * dt);
 
-        // Check fail: hit ground
-        if (pos.y < -0.3f)
-            gm.OnFail("ground");
-
-        // Check: close enough to stick → enter threading phase
-        float distZ = pos.z - _targetZ;
-        if (distZ <= Constants.THREADING_TRIGGER_DIST && distZ > -1f)
+        // Ring touches the ground — check if stick is inside the ring hole
+        float groundLevel = Constants.RING_RADIUS;
+        if (!_landed && pos.y <= groundLevel)
         {
-            gm.EnterThreading();
+            _landed = true;
+            pos.y = groundLevel;
+            transform.position = pos;
+
+            // Check: is the stick base inside the ring?
+            // Horizontal distance from ring center to stick
+            float dx = pos.x - _targetX;
+            float dz = pos.z - _targetZ;
+            float dist = Mathf.Sqrt(dx * dx + dz * dz);
+
+            // The ring hole fits over the stick if the stick center is within the ring hole
+            // Ring inner radius = RING_RADIUS - RING_TUBE
+            float holeRadius = Constants.RING_RADIUS - Constants.RING_TUBE;
+            var cfg = LevelConfig.Get(gm.Level);
+
+            if (dist < holeRadius * cfg.tolerance * 2f)
+            {
+                gm.OnSuccess();
+            }
+            else
+            {
+                gm.OnFail("missed");
+            }
+            return;
         }
+
+        // Fell off screen
+        if (pos.y < -5f)
+            gm.OnFail("fell");
 
         // Soft ceiling
         if (pos.y > 12f)
@@ -212,22 +218,8 @@ public class RingController : MonoBehaviour
     }
 
     /// <summary>
-    /// Threading phase: ring keeps flying — same physics as Playing.
-    /// Camera changes perspective but ring doesn't stop.
-    /// If ring passes beyond stick Z, GameManager detects and fails.
-    /// </summary>
-    private void UpdateThreading()
-    {
-        // Same movement as playing — ring doesn't stop
-        UpdatePlaying();
-    }
-
-    /// <summary>
-    /// Physics-based success animation.
-    /// Phase 1: Quick snap to center over stick (0.2s)
-    /// Phase 2: Freefall with real gravity down the pole
-    /// Phase 3: Bounce off the base with restitution
-    /// Phase 4: Wobble dampens, ring settles
+    /// Success animation: ring is on the ground around the stick.
+    /// Ease to center, wobble, settle.
     /// </summary>
     private void UpdateSuccessPhysics()
     {
@@ -236,85 +228,29 @@ public class RingController : MonoBehaviour
 
         Vector3 pos = transform.position;
 
-        // --- Phase 1: Snap to stick center (quick ease, ~0.2s) ---
-        float alignSpeed = 12f;
-        pos.x = Mathf.Lerp(pos.x, _targetX, alignSpeed * dt);
-        pos.z = Mathf.Lerp(pos.z, _targetZ, alignSpeed * dt);
-
-        // Mark aligned once close enough
-        if (!_aligned && Mathf.Abs(pos.x - _targetX) < 0.05f)
-            _aligned = true;
-
-        // --- Phase 2 & 3: Gravity fall + bounce ---
-        // Real gravity acceleration (slightly stronger for satisfying fall)
-        float fallGravity = -14f;
-        _fallVelocity += fallGravity * dt;
-
-        // Terminal velocity clamp
-        _fallVelocity = Mathf.Max(_fallVelocity, -12f);
-
-        pos.y += _fallVelocity * dt;
-
-        // Bounce when hitting the base
-        if (pos.y <= _restY)
-        {
-            pos.y = _restY;
-            _bounceCount++;
-
-            // Restitution: each bounce loses energy
-            // First bounce is biggest, then rapidly diminishes
-            float restitution = 0.45f * Mathf.Pow(0.35f, _bounceCount - 1);
-
-            if (Mathf.Abs(_fallVelocity) > 0.3f)
-            {
-                _fallVelocity = -_fallVelocity * restitution;
-
-                // Kick the wobble on each bounce
-                _wobbleVelocity += (Random.value - 0.5f) * 80f * restitution;
-            }
-            else
-            {
-                // Settled — kill all motion
-                _fallVelocity = 0f;
-            }
-        }
+        // Ease ring to center on stick
+        pos.x = Mathf.Lerp(pos.x, _targetX, 6f * dt);
+        pos.z = Mathf.Lerp(pos.z, _targetZ, 6f * dt);
+        pos.y = _restY;
 
         transform.position = pos;
 
-        // --- Wobble: tilt oscillation during fall ---
-        // Spring-damper for wobble angle
+        // Wobble: spring-damper settling
         float wobbleStiffness = 120f;
         float wobbleDamping = 8f;
-
-        _wobbleVelocity -= _wobbleAngle * wobbleStiffness * dt; // spring restoring force
-        _wobbleVelocity *= (1f - wobbleDamping * dt);           // damping
+        _wobbleVelocity -= _wobbleAngle * wobbleStiffness * dt;
+        _wobbleVelocity *= (1f - wobbleDamping * dt);
         _wobbleAngle += _wobbleVelocity * dt;
-
-        // Clamp wobble so it doesn't go crazy
         _wobbleAngle = Mathf.Clamp(_wobbleAngle, -15f, 15f);
 
-        // If falling fast, add some natural wobble from air resistance
-        if (_fallVelocity < -2f && _bounceCount == 0)
-        {
-            _wobbleVelocity += Mathf.Sin(_successTime * 25f) * 15f * dt;
-        }
-
-        // --- Spin: slows down as ring settles ---
-        float spinSpeed;
-        if (_bounceCount == 0)
-            spinSpeed = 200f; // fast spin during freefall
-        else if (_fallVelocity != 0f)
-            spinSpeed = 120f / _bounceCount; // slowing with each bounce
-        else
-            spinSpeed = 5f; // gentle drift when settled
-
+        // Spin slows down
+        float spinSpeed = 60f * Mathf.Max(0f, 1f - _successTime * 0.5f) + 5f;
         _spinAngle += spinSpeed * dt;
 
-        // --- Final rotation: flat base + wobble + spin ---
         Quaternion targetRot = Quaternion.Euler(
-            _wobbleAngle,           // wobble on X axis
-            _spinAngle,             // spin around pole
-            _wobbleAngle * 0.6f     // coupled wobble on Z for natural feel
+            _wobbleAngle,
+            _spinAngle,
+            _wobbleAngle * 0.6f
         );
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 15f * dt);
     }
