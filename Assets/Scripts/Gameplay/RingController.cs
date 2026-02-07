@@ -4,6 +4,7 @@ using UnityEngine;
 /// Ring physics controller. The ring flies forward automatically.
 /// Player holds to rise (fights gravity), steers left/right.
 /// Wind pushes horizontally. Slow-motion near the stick.
+/// Grace period at start auto-floats so player can orient.
 /// </summary>
 public class RingController : MonoBehaviour
 {
@@ -17,6 +18,7 @@ public class RingController : MonoBehaviour
     private float _windGust;
     private float _targetZ;
     private float _targetX;
+    private float _playTime;  // time since Playing state started
 
     private LevelData _cfg;
 
@@ -36,8 +38,9 @@ public class RingController : MonoBehaviour
         _targetZ = cfg.stickZ;
         _targetX = cfg.stickX;
         _windGust = 0f;
+        _playTime = 0f;
 
-        transform.position = new Vector3(0f, 3.2f, 2f);
+        transform.position = new Vector3(0f, 4.5f, 2f);  // higher start (was 3.2)
         _vx = 0f;
         _vy = 0f;
     }
@@ -51,6 +54,7 @@ public class RingController : MonoBehaviour
         if (input == null) return;
 
         float dt = Time.fixedDeltaTime;
+        _playTime += dt;
 
         // Slow-motion near stick
         float dist = DistanceToStick;
@@ -63,6 +67,13 @@ public class RingController : MonoBehaviour
         if (input.IsHolding)
             _vy += Constants.LIFT_FORCE * dt;
 
+        // Grace period: auto-float so the ring doesn't nosedive before player reacts
+        if (_playTime < Constants.GRACE_DURATION)
+        {
+            float graceFade = 1f - (_playTime / Constants.GRACE_DURATION);
+            _vy += Constants.GRACE_LIFT * graceFade * dt;
+        }
+
         // Horizontal steering
         _vx += input.SteerDirection * Constants.H_FORCE * dt;
 
@@ -73,9 +84,9 @@ public class RingController : MonoBehaviour
         _windGust *= 0.97f;
         _vx += (windBase + _windGust) * dt;
 
-        // Damping
+        // Damping — smooth exponential decay
         _vx *= Mathf.Pow(Constants.DAMPING, dt * 60f);
-        _vy *= Mathf.Pow(0.98f, dt * 60f);
+        _vy *= Mathf.Pow(Constants.VY_DAMPING, dt * 60f);
 
         // Clamp
         _vy = Mathf.Clamp(_vy, Constants.MIN_VY, Constants.MAX_VY);
@@ -89,12 +100,13 @@ public class RingController : MonoBehaviour
         pos.x = Mathf.Clamp(pos.x, -5f, 5f);
         transform.position = pos;
 
-        // Visual tilt
-        transform.rotation = Quaternion.Euler(
-            90f + _vy * 5f,   // pitch based on vertical speed
+        // Visual tilt — subtle, using Slerp for smoothness
+        Quaternion targetRot = Quaternion.Euler(
+            90f + _vy * Constants.TILT_PITCH,
             0f,
-            _vx * 15f         // roll based on horizontal speed
+            _vx * Constants.TILT_ROLL
         );
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 8f * dt);
 
         // Check fail: hit ground
         if (pos.y < -0.3f)

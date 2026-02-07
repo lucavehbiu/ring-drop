@@ -3,6 +3,7 @@ using UnityEngine;
 /// <summary>
 /// Generates level configuration. Each level gets harder:
 /// stick further away, more wind, tighter tolerance, more ships.
+/// Level 1 is gentle and forgiving — difficulty ramps from level 3+.
 /// </summary>
 [System.Serializable]
 public struct LevelData
@@ -26,13 +27,13 @@ public static class LevelConfig
     {
         return new LevelData
         {
-            stickZ     = -(25f + level * 3f),
+            stickZ     = -(20f + level * 3f),                                          // closer at start (was -25)
             stickX     = level <= 1 ? 0f : Mathf.Sin(level * 1.4f) * Mathf.Min(level * 0.3f, 2.2f),
-            speed      = 8f + level * 0.5f,
-            gravity    = -9.8f - (level - 1) * 0.3f,
-            tolerance  = Mathf.Max(0.28f, 0.85f - (level - 1) * 0.055f),
-            wind       = 0.3f + level * 0.15f,
-            windGusts  = level >= 2,
+            speed      = 5.5f + level * 0.5f,                                          // slower start (was 8)
+            gravity    = -5.5f - Mathf.Max(0, level - 2) * 0.4f,                       // gentle at first, ramps from lvl 3
+            tolerance  = Mathf.Max(0.28f, 1.0f - (level - 1) * 0.06f),                 // more forgiving (was 0.85 start)
+            wind       = level <= 1 ? 0.1f : 0.2f + (level - 1) * 0.12f,               // almost no wind level 1
+            windGusts  = level >= 3,                                                     // gusts start later (was 2)
             shipCount  = Mathf.Min(Mathf.FloorToInt(level * 1.2f), MAX_SHIPS),
             shipSpeed  = 3f + level * 0.5f
         };

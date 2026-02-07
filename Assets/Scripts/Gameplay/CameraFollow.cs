@@ -21,6 +21,13 @@ public class CameraFollow : MonoBehaviour
             _cam = Camera.main;
     }
 
+    private void Start()
+    {
+        // Auto-wire references if not assigned in Inspector (procedural bootstrap)
+        if (ring == null) ring = FindAnyObjectByType<RingController>();
+        if (stick == null) stick = FindAnyObjectByType<StickController>();
+    }
+
     public void Reset()
     {
         if (_cam != null)

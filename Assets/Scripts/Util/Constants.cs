@@ -2,17 +2,23 @@ using UnityEngine;
 
 /// <summary>
 /// Game-wide constants. Single source of truth for all tuning values.
+/// Tuned for smooth, floaty space-feel physics.
 /// </summary>
 public static class Constants
 {
-    // Ring physics
-    public const float GRAVITY       = -9.8f;
-    public const float LIFT_FORCE    = 22f;
-    public const float H_FORCE       = 12f;
-    public const float DAMPING       = 0.92f;
-    public const float MAX_VY        = 8f;
-    public const float MIN_VY        = -12f;
-    public const float MAX_VX        = 6f;
+    // Ring physics — floaty, forgiving, smooth
+    public const float GRAVITY       = -5.5f;   // gentle space gravity (was -9.8)
+    public const float LIFT_FORCE    = 15f;     // responsive but not jerky (was 22)
+    public const float H_FORCE       = 8f;      // smooth horizontal steering (was 12)
+    public const float DAMPING       = 0.95f;   // less drag, more momentum (was 0.92)
+    public const float VY_DAMPING    = 0.985f;  // smooth vertical (was 0.98)
+    public const float MAX_VY        = 6f;      // gentler cap (was 8)
+    public const float MIN_VY        = -8f;     // can't freefall as hard (was -12)
+    public const float MAX_VX        = 4.5f;    // less wild sideways (was 6)
+
+    // Grace period — auto-float at start so player can orient
+    public const float GRACE_DURATION = 1.0f;   // seconds of auto-lift after playing starts
+    public const float GRACE_LIFT    = 8f;      // gentle upward push during grace
 
     // Ring geometry
     public const float RING_RADIUS   = 0.7f;
@@ -25,8 +31,8 @@ public static class Constants
     public const float VALID_Y_MAX   = STICK_HEIGHT - 0.3f;
 
     // Gameplay
-    public const float SLOWMO_DIST   = 8f;    // distance to stick for bullet-time
-    public const float SLOWMO_MIN    = 0.35f;  // min speed multiplier
+    public const float SLOWMO_DIST   = 8f;
+    public const float SLOWMO_MIN    = 0.35f;
     public const float SHIP_HIT_DIST = 0.9f;
     public const float SHIP_WARN_DIST = 1.8f;
 
@@ -36,8 +42,12 @@ public static class Constants
     public const float CAM_FOLLOW_Z  = 0.07f;
     public const float CAM_OFFSET_Y  = 2.2f;
     public const float CAM_OFFSET_Z  = 7f;
-    public const float CAM_ROLL_MULT = 0.4f;  // barrel roll intensity
+    public const float CAM_ROLL_MULT = 0.25f;   // subtler barrel roll (was 0.4)
     public const float BASE_FOV      = 62f;
+
+    // Visual tilt multipliers — subtle, not nauseating
+    public const float TILT_PITCH    = 2.5f;    // pitch from vertical speed (was 5)
+    public const float TILT_ROLL     = 8f;      // roll from horizontal speed (was 15)
 
     // Colors (neon galaxy palette)
     public static readonly Color CYAN    = new Color(0f, 1f, 1f);

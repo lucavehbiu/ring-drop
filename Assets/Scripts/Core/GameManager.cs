@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// Central game state machine. Controls flow from menu to gameplay to game over.
@@ -44,6 +45,34 @@ public class GameManager : MonoBehaviour
         _highScore = PlayerPrefs.GetInt("HighScore", 0);
     }
 
+    private void Start()
+    {
+        // Auto-wire references if not assigned in Inspector (procedural bootstrap)
+        if (ring == null) ring = FindAnyObjectByType<RingController>();
+        if (stick == null) stick = FindAnyObjectByType<StickController>();
+        if (cam == null) cam = FindAnyObjectByType<CameraFollow>();
+
+        if (ring == null || stick == null || cam == null)
+            Debug.LogError("[RingDrop] GameManager missing references! Ring=" + ring + " Stick=" + stick + " Cam=" + cam);
+        else
+            Debug.Log("[RingDrop] GameManager wired: Ring, Stick, Camera ready. Press Space or Click to start.");
+    }
+
+    /// <summary>Check for start/restart input in Menu and GameOver states.</summary>
+    private bool StartInputPressed()
+    {
+        var kb = Keyboard.current;
+        if (kb != null && kb.spaceKey.wasPressedThisFrame) return true;
+
+        var mouse = Mouse.current;
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame) return true;
+
+        var ts = Touchscreen.current;
+        if (ts != null && ts.primaryTouch.press.wasPressedThisFrame) return true;
+
+        return false;
+    }
+
     public void StartGame()
     {
         _score = 0;
@@ -69,9 +98,14 @@ public class GameManager : MonoBehaviour
     {
         switch (State)
         {
+            case GameState.Menu:
+                if (StartInputPressed())
+                    StartGame();
+                break;
+
             case GameState.Countdown:
                 _countdownTimer += Time.deltaTime;
-                if (_countdownTimer >= 1.2f)
+                if (_countdownTimer >= 2.5f)  // longer countdown so player can orient
                     SetState(GameState.Playing);
                 break;
 
@@ -89,6 +123,11 @@ public class GameManager : MonoBehaviour
                 _failTimer += Time.deltaTime;
                 if (_failTimer >= 1f)
                     SetState(GameState.GameOver);
+                break;
+
+            case GameState.GameOver:
+                if (StartInputPressed())
+                    StartGame();
                 break;
         }
     }
@@ -128,6 +167,7 @@ public class GameManager : MonoBehaviour
     private void SetState(GameState newState)
     {
         State = newState;
+        Debug.Log($"[RingDrop] State → {newState}");
         OnStateChanged?.Invoke(newState);
     }
 }

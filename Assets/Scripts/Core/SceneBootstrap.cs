@@ -52,21 +52,20 @@ public class SceneBootstrap : MonoBehaviour
         var inputObj = new GameObject("GameInput");
         inputObj.AddComponent<GameInput>();
 
-        // Ring (procedural torus — using a sphere placeholder for now)
-        var ringObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        ringObj.name = "Ring";
-        ringObj.transform.localScale = new Vector3(
-            Constants.RING_RADIUS * 2f,
-            Constants.RING_TUBE * 2f,
-            Constants.RING_RADIUS * 2f
+        // Ring — proper procedural torus mesh
+        var ringObj = new GameObject("Ring");
+        var meshFilter = ringObj.AddComponent<MeshFilter>();
+        var meshRenderer = ringObj.AddComponent<MeshRenderer>();
+        meshFilter.mesh = TorusMeshGenerator.Create(
+            Constants.RING_RADIUS,
+            Constants.RING_TUBE,
+            48, 24
         );
         var ringMat = new Material(urpLit);
         ringMat.color = Constants.CYAN;
         ringMat.SetColor("_EmissionColor", Constants.CYAN * 0.7f);
         ringMat.EnableKeyword("_EMISSION");
-        ringObj.GetComponent<Renderer>().material = ringMat;
-        var ringCollider = ringObj.GetComponent<Collider>();
-        if (ringCollider != null) Destroy(ringCollider);
+        meshRenderer.material = ringMat;
         var ringCtrl = ringObj.AddComponent<RingController>();
 
         // Ring light follows ring
