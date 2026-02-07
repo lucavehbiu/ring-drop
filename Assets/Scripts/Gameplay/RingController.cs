@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// Ring physics controller. The ring flies forward automatically.
 /// Player holds to rise (fights gravity), steers left/right.
-/// On success, animates sliding down the stick.
+/// On success, real physics: freefall down the stick, bounce off base, wobble, settle.
 /// Ring is HORIZONTAL (flat like a frisbee) — hole faces up for stick threading.
 /// </summary>
 public class RingController : MonoBehaviour
@@ -20,10 +20,14 @@ public class RingController : MonoBehaviour
     private float _targetX;
     private float _playTime;
 
-    // Success animation state
+    // Success animation — physics-based fall
     private float _successTime;
-    private Vector3 _successStartPos;
-    private float _successTargetY;
+    private float _fallVelocity;        // Y velocity during stick fall
+    private float _restY;               // where the ring settles (base of stick)
+    private bool _aligned;              // has the ring centered over the stick?
+    private float _wobbleAngle;         // tilt wobble during fall
+    private float _wobbleVelocity;      // angular velocity of wobble
+    private int _bounceCount;
     private float _spinAngle;
 
     private LevelData _cfg;
@@ -47,9 +51,10 @@ public class RingController : MonoBehaviour
         _playTime = 0f;
         _successTime = 0f;
         _spinAngle = 0f;
+        _bounceCount = 0;
 
         transform.position = new Vector3(0f, 4.5f, 2f);
-        transform.rotation = Quaternion.identity; // flat horizontal
+        transform.rotation = Quaternion.identity;
         _vx = 0f;
         _vy = 0f;
     }
@@ -58,9 +63,14 @@ public class RingController : MonoBehaviour
     public void BeginSuccessAnimation(Vector3 stickPos)
     {
         _successTime = 0f;
-        _successStartPos = transform.position;
-        // Slide down to just above the lower guide band
-        _successTargetY = Constants.VALID_Y_MIN + 0.3f;
+        _fallVelocity = 0f;
+        _aligned = false;
+        _wobbleAngle = 0f;
+        _wobbleVelocity = 0f;
+        _bounceCount = 0;
+
+        // Rest position: just above the stick base (base top ~0.12 + ring tube 0.11)
+        _restY = 0.22f;
     }
 
     private void FixedUpdate()
@@ -71,14 +81,13 @@ public class RingController : MonoBehaviour
         if (gm.State == GameManager.GameState.Playing)
             UpdatePlaying();
         else if (gm.State == GameManager.GameState.Success)
-            UpdateSuccessAnimation();
+            UpdateSuccessPhysics();
         else if (gm.State == GameManager.GameState.Countdown)
             UpdateCountdown();
     }
 
     private void UpdateCountdown()
     {
-        // Gentle hover during countdown
         float dt = Time.fixedDeltaTime;
         _spinAngle += 45f * dt;
         transform.rotation = Quaternion.Euler(0f, _spinAngle, 0f);
@@ -137,12 +146,12 @@ public class RingController : MonoBehaviour
         pos.x = Mathf.Clamp(pos.x, -5f, 5f);
         transform.position = pos;
 
-        // Visual tilt — HORIZONTAL base (0°), subtle tilt from velocity
-        _spinAngle += 90f * SpeedMultiplier * dt; // gentle spin while flying
+        // Visual tilt
+        _spinAngle += 90f * SpeedMultiplier * dt;
         Quaternion targetRot = Quaternion.Euler(
-            _vy * Constants.TILT_PITCH,    // pitch from vertical speed (base = 0 = flat)
-            _spinAngle,                     // spin around Y for visual flair
-            _vx * Constants.TILT_ROLL       // roll from horizontal speed
+            _vy * Constants.TILT_PITCH,
+            _spinAngle,
+            _vx * Constants.TILT_ROLL
         );
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 8f * dt);
 
@@ -165,26 +174,100 @@ public class RingController : MonoBehaviour
             _vy = -2f;
     }
 
-    private void UpdateSuccessAnimation()
+    /// <summary>
+    /// Physics-based success animation.
+    /// Phase 1: Quick snap to center over stick (0.2s)
+    /// Phase 2: Freefall with real gravity down the pole
+    /// Phase 3: Bounce off the base with restitution
+    /// Phase 4: Wobble dampens, ring settles
+    /// </summary>
+    private void UpdateSuccessPhysics()
     {
         float dt = Time.fixedDeltaTime;
         _successTime += dt;
 
-        float duration = 1.2f;
-        float t = Mathf.Clamp01(_successTime / duration);
-        // Smooth ease-out curve
-        float ease = 1f - Mathf.Pow(1f - t, 3f);
-
-        // Slide to stick position and down
         Vector3 pos = transform.position;
-        pos.x = Mathf.Lerp(_successStartPos.x, _targetX, ease);
-        pos.z = Mathf.Lerp(_successStartPos.z, _targetZ, ease * 0.5f); // subtle Z adjust
-        pos.y = Mathf.Lerp(_successStartPos.y, _successTargetY, ease);
+
+        // --- Phase 1: Snap to stick center (quick ease, ~0.2s) ---
+        float alignSpeed = 12f;
+        pos.x = Mathf.Lerp(pos.x, _targetX, alignSpeed * dt);
+        pos.z = Mathf.Lerp(pos.z, _targetZ, alignSpeed * dt);
+
+        // Mark aligned once close enough
+        if (!_aligned && Mathf.Abs(pos.x - _targetX) < 0.05f)
+            _aligned = true;
+
+        // --- Phase 2 & 3: Gravity fall + bounce ---
+        // Real gravity acceleration (slightly stronger for satisfying fall)
+        float fallGravity = -14f;
+        _fallVelocity += fallGravity * dt;
+
+        // Terminal velocity clamp
+        _fallVelocity = Mathf.Max(_fallVelocity, -12f);
+
+        pos.y += _fallVelocity * dt;
+
+        // Bounce when hitting the base
+        if (pos.y <= _restY)
+        {
+            pos.y = _restY;
+            _bounceCount++;
+
+            // Restitution: each bounce loses energy
+            // First bounce is biggest, then rapidly diminishes
+            float restitution = 0.45f * Mathf.Pow(0.35f, _bounceCount - 1);
+
+            if (Mathf.Abs(_fallVelocity) > 0.3f)
+            {
+                _fallVelocity = -_fallVelocity * restitution;
+
+                // Kick the wobble on each bounce
+                _wobbleVelocity += (Random.value - 0.5f) * 80f * restitution;
+            }
+            else
+            {
+                // Settled — kill all motion
+                _fallVelocity = 0f;
+            }
+        }
+
         transform.position = pos;
 
-        // Spin and flatten to perfectly horizontal
-        _spinAngle += 360f * dt; // celebratory fast spin
-        Quaternion targetRot = Quaternion.Euler(0f, _spinAngle, 0f);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 6f * dt);
+        // --- Wobble: tilt oscillation during fall ---
+        // Spring-damper for wobble angle
+        float wobbleStiffness = 120f;
+        float wobbleDamping = 8f;
+
+        _wobbleVelocity -= _wobbleAngle * wobbleStiffness * dt; // spring restoring force
+        _wobbleVelocity *= (1f - wobbleDamping * dt);           // damping
+        _wobbleAngle += _wobbleVelocity * dt;
+
+        // Clamp wobble so it doesn't go crazy
+        _wobbleAngle = Mathf.Clamp(_wobbleAngle, -15f, 15f);
+
+        // If falling fast, add some natural wobble from air resistance
+        if (_fallVelocity < -2f && _bounceCount == 0)
+        {
+            _wobbleVelocity += Mathf.Sin(_successTime * 25f) * 15f * dt;
+        }
+
+        // --- Spin: slows down as ring settles ---
+        float spinSpeed;
+        if (_bounceCount == 0)
+            spinSpeed = 200f; // fast spin during freefall
+        else if (_fallVelocity != 0f)
+            spinSpeed = 120f / _bounceCount; // slowing with each bounce
+        else
+            spinSpeed = 5f; // gentle drift when settled
+
+        _spinAngle += spinSpeed * dt;
+
+        // --- Final rotation: flat base + wobble + spin ---
+        Quaternion targetRot = Quaternion.Euler(
+            _wobbleAngle,           // wobble on X axis
+            _spinAngle,             // spin around pole
+            _wobbleAngle * 0.6f     // coupled wobble on Z for natural feel
+        );
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 15f * dt);
     }
 }
