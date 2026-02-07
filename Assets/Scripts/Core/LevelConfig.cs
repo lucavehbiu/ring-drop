@@ -31,7 +31,7 @@ public static class LevelConfig
             stickX     = level <= 1 ? 0f : Mathf.Sin(level * 1.4f) * Mathf.Min(level * 0.3f, 2.2f),
             speed      = 5.5f + level * 0.5f,                                          // slower start (was 8)
             gravity    = -5.5f - Mathf.Max(0, level - 2) * 0.4f,                       // gentle at first, ramps from lvl 3
-            tolerance  = Mathf.Max(0.28f, 1.0f - (level - 1) * 0.06f),                 // more forgiving (was 0.85 start)
+            tolerance  = Mathf.Max(0.22f, 0.55f - (level - 1) * 0.03f),                 // level 1 = 0.55, level 12+ = 0.22
             wind       = level <= 1 ? 0.1f : 0.2f + (level - 1) * 0.12f,               // almost no wind level 1
             windGusts  = level >= 3,                                                     // gusts start later (was 2)
             shipCount  = Mathf.Min(Mathf.FloorToInt(level * 1.2f), MAX_SHIPS),

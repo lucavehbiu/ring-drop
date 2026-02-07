@@ -95,6 +95,10 @@ public class SceneBootstrap : MonoBehaviour
         var uiObj = new GameObject("UIManager");
         uiObj.AddComponent<UIManager>();
 
+        // === SFX MANAGER ===
+        var sfxObj = new GameObject("SFXManager");
+        sfxObj.AddComponent<SFXManager>();
+
         // === GROUND ===
         var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
         ground.name = "Ground";

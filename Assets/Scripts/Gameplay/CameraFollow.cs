@@ -69,6 +69,10 @@ public class CameraFollow : MonoBehaviour
             transform.position = Vector3.Lerp(transform.position, targetPos, 2f * dt);
             transform.LookAt(ringPos + Vector3.forward * -5f);
         }
+        else if (state == GameManager.GameState.Fail)
+        {
+            UpdateFailCamera(ringPos, dt);
+        }
         else if (state == GameManager.GameState.Success)
         {
             // During success, follow ring falling down stick — side angle
@@ -136,7 +140,7 @@ public class CameraFollow : MonoBehaviour
         Vector3 targetPos = new Vector3(
             stickPos.x,
             stickPos.y + Constants.THREADING_CAM_HEIGHT,
-            stickPos.z + 2f
+            stickPos.z + 1f
         );
 
         // Smooth transition from wherever camera currently is
@@ -179,5 +183,23 @@ public class CameraFollow : MonoBehaviour
         transform.LookAt(lookAt);
 
         _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, 50f, 2f * dt);
+    }
+
+    /// <summary>
+    /// Fail camera: pull back to watch ring tumble and fall.
+    /// </summary>
+    private void UpdateFailCamera(Vector3 ringPos, float dt)
+    {
+        // Position slightly above and behind ring to watch the fall
+        Vector3 targetPos = new Vector3(
+            ringPos.x * 0.3f,
+            Mathf.Max(ringPos.y + 3f, 3f),
+            ringPos.z + 5f
+        );
+
+        transform.position = Vector3.Lerp(transform.position, targetPos, 2f * dt);
+        transform.LookAt(ringPos);
+
+        _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, 55f, 2f * dt);
     }
 }

@@ -55,9 +55,14 @@ public static class Constants
     public const float THREADING_DRIFT        = 0.4f;  // slow forward drift during threading
     public const float THREADING_STEER        = 5f;    // precise steering force
     public const float THREADING_HOVER_Y      = STICK_HEIGHT + 1f;  // hover height above stick top
-    public const float THREADING_CAM_HEIGHT   = 12f;   // camera height for top-down view
-    public const float THREADING_CAM_LERP     = 2.5f;  // camera transition speed
-    public const float THREADING_FOV          = 45f;   // tighter FOV for focus
+    public const float THREADING_CAM_HEIGHT   = 7f;    // camera height for top-down view (closer for visibility)
+    public const float THREADING_CAM_LERP     = 1.3f;  // camera transition speed (~0.8s smooth)
+    public const float THREADING_FOV          = 55f;   // wider FOV for ring visibility
+
+    // Threading wind — drift that pushes ring off-center
+    public const float THREADING_WIND_BASE    = 0.3f;   // passive drift during threading
+    public const float THREADING_WIND_PER_LVL = 0.08f;  // additional drift per level
+    public const float THREADING_WIND_FREQ    = 0.8f;   // oscillation frequency
 
     // Colors (neon galaxy palette)
     public static readonly Color CYAN    = new Color(0f, 1f, 1f);

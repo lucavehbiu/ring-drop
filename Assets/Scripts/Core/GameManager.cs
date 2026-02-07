@@ -144,7 +144,7 @@ public class GameManager : MonoBehaviour
 
             case GameState.Fail:
                 _failTimer += Time.deltaTime;
-                if (_failTimer >= 1.5f)
+                if (_failTimer >= 2.5f)
                     SetState(GameState.GameOver);
                 break;
 
@@ -183,6 +183,7 @@ public class GameManager : MonoBehaviour
             _successTimer = 0f;
             SetState(GameState.Success);
             ring.BeginSuccessAnimation(stick.transform.position);
+            SFXManager.Instance?.PlaySuccess();
         }
         else
         {
@@ -197,6 +198,8 @@ public class GameManager : MonoBehaviour
         _failTimer = 0f;
         Debug.Log($"[RingDrop] Fail reason: {reason}");
         SetState(GameState.Fail);
+        ring.BeginFailAnimation();
+        SFXManager.Instance?.PlayFail();
     }
 
     private void SetState(GameState newState)
