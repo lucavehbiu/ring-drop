@@ -1,9 +1,12 @@
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using Unity.Cinemachine;
 
 /// <summary>
 /// Scene bootstrap — creates all game objects procedurally.
-/// Now uses: Rigidbody physics, Cinemachine cameras, PhysicsMaterials.
+/// Now uses: Rigidbody physics, Cinemachine cameras, PhysicsMaterials,
+/// cinematic post-processing, multi-layer starfield, nebula clouds, grid floor.
 /// </summary>
 public class SceneBootstrap : MonoBehaviour
 {
@@ -34,36 +37,45 @@ public class SceneBootstrap : MonoBehaviour
             CinemachineBlendDefinition.Styles.EaseInOut, 1.2f
         );
 
-        // === FOG ===
+        // === FOG (boosted) ===
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Exponential;
-        RenderSettings.fogDensity = 0.008f;
-        RenderSettings.fogColor = new Color(0.01f, 0.005f, 0.04f);
+        RenderSettings.fogDensity = Constants.FOG_DENSITY;
+        RenderSettings.fogColor = Constants.FOG_COLOR;
 
-        // === LIGHTING ===
+        // === LIGHTING (boosted) ===
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-        RenderSettings.ambientLight = new Color(0.06f, 0.03f, 0.12f);
+        RenderSettings.ambientLight = Constants.AMBIENT_COLOR;
 
         var dirLight = new GameObject("DirectionalLight");
         var dl = dirLight.AddComponent<Light>();
         dl.type = LightType.Directional;
         dl.color = new Color(0.2f, 0.15f, 0.7f);
-        dl.intensity = 0.4f;
+        dl.intensity = Constants.DIR_LIGHT_INTENSITY;
         dirLight.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
 
         var fillObj = new GameObject("FillLight");
         var fl = fillObj.AddComponent<Light>();
         fl.type = LightType.Directional;
         fl.color = new Color(0.5f, 0.1f, 0.3f);
-        fl.intensity = 0.15f;
+        fl.intensity = Constants.FILL_LIGHT_INTENSITY;
         fillObj.transform.rotation = Quaternion.Euler(-20f, 120f, 0f);
 
         var ringLightObj = new GameObject("RingLight");
         var rl = ringLightObj.AddComponent<Light>();
         rl.type = LightType.Point;
         rl.color = Constants.CYAN;
-        rl.intensity = 3f;
-        rl.range = 18f;
+        rl.intensity = Constants.RING_LIGHT_INTENSITY;
+        rl.range = Constants.RING_LIGHT_RANGE;
+
+        // Rim light from behind for depth
+        var rimLightObj = new GameObject("RimLight");
+        var rim = rimLightObj.AddComponent<Light>();
+        rim.type = LightType.Point;
+        rim.color = new Color(1f, 0.7f, 0.4f);
+        rim.intensity = Constants.RIM_LIGHT_INTENSITY;
+        rim.range = Constants.RIM_LIGHT_RANGE;
+        rimLightObj.transform.position = new Vector3(0f, 3f, 15f);
 
         // === INPUT ===
         var inputObj = new GameObject("GameInput");
@@ -109,10 +121,6 @@ public class SceneBootstrap : MonoBehaviour
         ringRb.interpolation = RigidbodyInterpolation.Interpolate;
         ringRb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
-        // Compound collider — ring of BoxColliders with open center hole.
-        // A convex MeshCollider fills the torus hole (solid disc), so we
-        // use 12 small boxes arranged in a circle to form the ring shape.
-        // The center stays open so the stick can pass through.
         CreateRingCompoundCollider(ringObj, Constants.RING_RADIUS, Constants.RING_TUBE, ringPhysMat);
 
         var ringCtrl = ringObj.AddComponent<RingController>();
@@ -123,19 +131,27 @@ public class SceneBootstrap : MonoBehaviour
         // === STICK ===
         var stickCtrl = StickController.CreateStick();
 
-        // === GROUND (with collider and tag) ===
+        // === GROUND (grid floor) ===
         var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
         ground.name = "Ground";
         ground.tag = "Ground";
         ground.transform.position = Vector3.zero;
         ground.transform.localScale = new Vector3(20f, 1f, 20f);
+
+        var gridTex = TextureGenerator.CreateGridTexture(
+            Constants.GRID_TEX_SIZE, Constants.GRID_LINE_WIDTH,
+            Constants.GRID_BASE_COLOR, Constants.GRID_LINE_COLOR
+        );
         var groundMat = new Material(urpLit);
-        groundMat.color = new Color(0.015f, 0.008f, 0.04f);
-        groundMat.SetFloat("_Smoothness", 0.85f);
-        groundMat.SetFloat("_Metallic", 0.3f);
+        groundMat.color = Constants.GRID_BASE_COLOR;
+        groundMat.mainTexture = gridTex;
+        groundMat.mainTextureScale = new Vector2(Constants.GRID_TILE_COUNT, Constants.GRID_TILE_COUNT);
+        groundMat.SetFloat("_Smoothness", Constants.GROUND_SMOOTHNESS);
+        groundMat.SetFloat("_Metallic", Constants.GROUND_METALLIC);
+        groundMat.SetColor("_EmissionColor", Constants.GRID_LINE_COLOR * 0.3f);
+        groundMat.EnableKeyword("_EMISSION");
         ground.GetComponent<Renderer>().material = groundMat;
 
-        // Ground collider already exists from CreatePrimitive, just set physics material
         var groundCollider = ground.GetComponent<Collider>();
         if (groundCollider != null)
             groundCollider.material = groundPhysMat;
@@ -160,24 +176,28 @@ public class SceneBootstrap : MonoBehaviour
         var sfxObj = new GameObject("SFXManager");
         sfxObj.AddComponent<SFXManager>();
 
-        // === STARFIELD ===
-        CreateStarfield(urpUnlit ?? urpLit);
+        // === STARFIELD (3 layers, 4000+ stars) ===
+        CreateStarfield(urpLit);
 
         // === DISTANT NEBULA LIGHTS ===
         CreateNebulaLights();
 
-        Debug.Log("[RingDrop] Scene bootstrapped with Rigidbody physics + Cinemachine. Tap/click or press Space to start.");
+        // === NEBULA CLOUDS ===
+        CreateNebulaClouds(urpLit);
+
+        // === POST-PROCESSING ===
+        ConfigurePostProcessing();
+
+        Debug.Log("[RingDrop] Scene bootstrapped with cinematic visuals, Rigidbody physics + Cinemachine.");
     }
 
     /// <summary>
     /// Creates a ring-shaped compound collider from BoxColliders arranged in a circle.
-    /// The center hole stays open so the stick pole can pass through.
     /// </summary>
     private static void CreateRingCompoundCollider(GameObject ringObj, float radius, float tube, PhysicsMaterial mat)
     {
         int segments = 12;
         float angleStep = 360f / segments;
-        // Each box spans one arc segment of the ring
         float arcLength = 2f * Mathf.PI * radius / segments;
 
         for (int i = 0; i < segments; i++)
@@ -189,11 +209,9 @@ public class SceneBootstrap : MonoBehaviour
             var child = new GameObject($"RingCol_{i}");
             child.transform.SetParent(ringObj.transform, false);
             child.transform.localPosition = new Vector3(x, 0f, z);
-            // Rotate box to face outward along the ring
             child.transform.localRotation = Quaternion.Euler(0f, -i * angleStep, 0f);
 
             var box = child.AddComponent<BoxCollider>();
-            // Box size: width = arc length, height = tube diameter, depth = tube diameter
             box.size = new Vector3(arcLength, tube * 2f, tube * 2f);
             box.material = mat;
         }
@@ -207,43 +225,183 @@ public class SceneBootstrap : MonoBehaviour
         col.size = scale;
     }
 
+    // ========== POST-PROCESSING ==========
+
+    private void ConfigurePostProcessing()
+    {
+        // Find existing Volume or create one
+        var volume = FindAnyObjectByType<Volume>();
+        if (volume == null)
+        {
+            var volObj = new GameObject("PostProcessVolume");
+            volume = volObj.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.profile = ScriptableObject.CreateInstance<VolumeProfile>();
+        }
+
+        var profile = volume.profile;
+
+        // Bloom
+        if (!profile.TryGet<Bloom>(out var bloom))
+            bloom = profile.Add<Bloom>();
+        bloom.active = true;
+        bloom.intensity.Override(Constants.PP_BLOOM_INTENSITY);
+        bloom.threshold.Override(Constants.PP_BLOOM_THRESHOLD);
+        bloom.scatter.Override(Constants.PP_BLOOM_SCATTER);
+        bloom.highQualityFiltering.Override(true);
+
+        // Tonemapping → ACES
+        if (!profile.TryGet<Tonemapping>(out var tonemap))
+            tonemap = profile.Add<Tonemapping>();
+        tonemap.active = true;
+        tonemap.mode.Override(TonemappingMode.ACES);
+
+        // Vignette
+        if (!profile.TryGet<Vignette>(out var vignette))
+            vignette = profile.Add<Vignette>();
+        vignette.active = true;
+        vignette.intensity.Override(Constants.PP_VIGNETTE_INTENSITY);
+
+        // Motion Blur
+        if (!profile.TryGet<MotionBlur>(out var motionBlur))
+            motionBlur = profile.Add<MotionBlur>();
+        motionBlur.active = true;
+        motionBlur.intensity.Override(Constants.PP_MOTION_BLUR_INTENSITY);
+        motionBlur.quality.Override(MotionBlurQuality.High);
+
+        // Film Grain
+        if (!profile.TryGet<FilmGrain>(out var filmGrain))
+            filmGrain = profile.Add<FilmGrain>();
+        filmGrain.active = true;
+        filmGrain.intensity.Override(Constants.PP_FILM_GRAIN_INTENSITY);
+
+        // Chromatic Aberration
+        if (!profile.TryGet<ChromaticAberration>(out var chromAb))
+            chromAb = profile.Add<ChromaticAberration>();
+        chromAb.active = true;
+        chromAb.intensity.Override(Constants.PP_CHROM_AB_INTENSITY);
+
+        // Screen Space Lens Flare
+        if (!profile.TryGet<ScreenSpaceLensFlare>(out var lensFlare))
+            lensFlare = profile.Add<ScreenSpaceLensFlare>();
+        lensFlare.active = true;
+        lensFlare.intensity.Override(Constants.PP_LENS_FLARE_INTENSITY);
+    }
+
+    // ========== STARFIELD (3 layers, ~4300 stars) ==========
+    // Static stars use CombineMeshes for performance.
+    // ~30% get individual GameObjects for twinkling animation.
+
     private void CreateStarfield(Shader shader)
     {
         var parent = new GameObject("Starfield");
-        var mat = new Material(shader);
-        mat.color = Color.white;
-        if (shader.name.Contains("Lit"))
+        var animator = parent.AddComponent<StarfieldAnimator>();
+
+        CreateStarLayer(parent.transform, animator, shader, "NearStars",
+            Constants.STARS_NEAR_COUNT, Constants.STARS_NEAR_MIN_D, Constants.STARS_NEAR_MAX_D,
+            Constants.STARS_NEAR_MIN_S, Constants.STARS_NEAR_MAX_S);
+
+        CreateStarLayer(parent.transform, animator, shader, "MidStars",
+            Constants.STARS_MID_COUNT, Constants.STARS_MID_MIN_D, Constants.STARS_MID_MAX_D,
+            Constants.STARS_MID_MIN_S, Constants.STARS_MID_MAX_S);
+
+        CreateStarLayer(parent.transform, animator, shader, "FarStars",
+            Constants.STARS_FAR_COUNT, Constants.STARS_FAR_MIN_D, Constants.STARS_FAR_MAX_D,
+            Constants.STARS_FAR_MIN_S, Constants.STARS_FAR_MAX_S);
+    }
+
+    private struct StarData
+    {
+        public Vector3 pos;
+        public Quaternion rot;
+        public float size;
+        public Color color;
+        public Color emission;
+    }
+
+    private StarData GenerateStar(float minDist, float maxDist, float minSize, float maxSize)
+    {
+        Vector3 dir = Random.onUnitSphere;
+        float dist = Random.Range(minDist, maxDist);
+        Vector3 pos = dir * dist;
+        if (pos.y < 3f) pos.y = Random.Range(3f, maxDist * 0.6f);
+
+        float roll = Random.value;
+        Color starColor;
+        if (roll < 0.8f) starColor = Constants.STAR_WHITE;
+        else if (roll < 0.95f) starColor = Constants.STAR_BLUE_WHITE;
+        else starColor = Constants.STAR_WARM;
+
+        return new StarData
         {
-            mat.SetColor("_EmissionColor", Color.white * 2f);
-            mat.EnableKeyword("_EMISSION");
+            pos = pos,
+            rot = Random.rotation,
+            size = Random.Range(minSize, maxSize),
+            color = starColor,
+            emission = starColor * Random.Range(1.5f, 3f)
+        };
+    }
+
+    private void CreateStarLayer(Transform parent, StarfieldAnimator animator,
+        Shader shader, string name, int count, float minDist, float maxDist,
+        float minSize, float maxSize)
+    {
+        var quadMesh = CreateQuadMesh();
+        int twinkleCount = Mathf.RoundToInt(count * Constants.STAR_TWINKLE_FRACTION);
+        int staticCount = count - twinkleCount;
+
+        // --- Static stars: combined mesh (single draw call) ---
+        var staticMat = new Material(shader);
+        staticMat.color = Color.white;
+        staticMat.SetColor("_EmissionColor", Color.white * 2f);
+        staticMat.EnableKeyword("_EMISSION");
+
+        var combines = new CombineInstance[staticCount];
+        for (int i = 0; i < staticCount; i++)
+        {
+            var s = GenerateStar(minDist, maxDist, minSize, maxSize);
+            combines[i].mesh = quadMesh;
+            combines[i].transform = Matrix4x4.TRS(s.pos, s.rot, Vector3.one * s.size);
         }
 
-        int starCount = 300;
-        CombineInstance[] combines = new CombineInstance[starCount];
-        var starMesh = CreateQuadMesh();
-
-        for (int i = 0; i < starCount; i++)
-        {
-            Vector3 dir = Random.onUnitSphere;
-            float dist = Random.Range(60f, 200f);
-            Vector3 pos = dir * dist;
-            if (pos.y < 5f) pos.y = Random.Range(5f, 80f);
-            float size = Random.Range(0.1f, 0.5f);
-            if (dist > 120f) size *= 1.5f;
-
-            Matrix4x4 matrix = Matrix4x4.TRS(pos, Random.rotation, Vector3.one * size);
-            combines[i].mesh = starMesh;
-            combines[i].transform = matrix;
-        }
-
+        var staticObj = new GameObject($"{name}_Static");
+        staticObj.transform.SetParent(parent, false);
         var combinedMesh = new Mesh();
         combinedMesh.CombineMeshes(combines, true, true);
-        combinedMesh.name = "StarfieldMesh";
+        combinedMesh.name = $"{name}_StaticMesh";
+        var smf = staticObj.AddComponent<MeshFilter>();
+        smf.mesh = combinedMesh;
+        var smr = staticObj.AddComponent<MeshRenderer>();
+        smr.material = staticMat;
+        smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        smr.receiveShadows = false;
 
-        var mf = parent.AddComponent<MeshFilter>();
-        mf.mesh = combinedMesh;
-        var mr = parent.AddComponent<MeshRenderer>();
-        mr.material = mat;
+        // --- Twinkling stars: individual GameObjects ---
+        for (int i = 0; i < twinkleCount; i++)
+        {
+            var s = GenerateStar(minDist, maxDist, minSize, maxSize);
+
+            var starObj = new GameObject($"{name}_Twinkle_{i}");
+            starObj.transform.SetParent(parent, false);
+            starObj.transform.position = s.pos;
+            starObj.transform.rotation = s.rot;
+            starObj.transform.localScale = Vector3.one * s.size;
+
+            var mf = starObj.AddComponent<MeshFilter>();
+            mf.sharedMesh = quadMesh;
+
+            var mat = new Material(shader);
+            mat.color = s.color;
+            mat.SetColor("_EmissionColor", s.emission);
+            mat.EnableKeyword("_EMISSION");
+
+            var mr = starObj.AddComponent<MeshRenderer>();
+            mr.material = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+
+            animator.RegisterStar(mr, s.emission);
+        }
     }
 
     private Mesh CreateQuadMesh()
@@ -261,6 +419,8 @@ public class SceneBootstrap : MonoBehaviour
         mesh.uv = new Vector2[] { Vector2.zero, Vector2.right, Vector2.one, Vector2.up };
         return mesh;
     }
+
+    // ========== NEBULA LIGHTS ==========
 
     private void CreateNebulaLights()
     {
@@ -288,5 +448,91 @@ public class SceneBootstrap : MonoBehaviour
             light.intensity = 0.8f;
             light.range = 80f;
         }
+    }
+
+    // ========== NEBULA CLOUDS ==========
+
+    private void CreateNebulaClouds(Shader shader)
+    {
+        Color[] cloudColors = {
+            new Color(0.4f, 0f, 0.8f),   // purple
+            new Color(0f, 0.3f, 0.8f),   // blue
+            new Color(0.8f, 0f, 0.4f),   // pink
+            new Color(0f, 0.6f, 0.6f),   // cyan
+            new Color(0.5f, 0.1f, 0.7f), // violet
+            new Color(0.1f, 0.4f, 0.9f), // azure
+            new Color(0.7f, 0.15f, 0.5f),// magenta
+            new Color(0.2f, 0.5f, 0.7f), // teal
+        };
+
+        var parent = new GameObject("NebulaClouds");
+        var quadMesh = CreateQuadMesh();
+
+        for (int i = 0; i < Constants.NEBULA_CLOUD_COUNT; i++)
+        {
+            float angle = (i / (float)Constants.NEBULA_CLOUD_COUNT) * Mathf.PI * 2f;
+            float dist = Random.Range(60f, 140f);
+            float height = Random.Range(15f, 55f);
+            Vector3 pos = new Vector3(
+                Mathf.Cos(angle) * dist,
+                height,
+                Mathf.Sin(angle) * dist - 80f
+            );
+
+            float size = Random.Range(Constants.NEBULA_CLOUD_MIN_S, Constants.NEBULA_CLOUD_MAX_S);
+            float alpha = Random.Range(Constants.NEBULA_CLOUD_ALPHA_MIN, Constants.NEBULA_CLOUD_ALPHA_MAX);
+
+            var cloudObj = new GameObject($"NebulaCloud_{i}");
+            cloudObj.transform.SetParent(parent.transform, false);
+            cloudObj.transform.position = pos;
+            cloudObj.transform.rotation = Random.rotation;
+            cloudObj.transform.localScale = Vector3.one * size;
+
+            var mf = cloudObj.AddComponent<MeshFilter>();
+            mf.sharedMesh = quadMesh;
+
+            var mat = new Material(shader);
+            // Set to transparent surface
+            mat.SetFloat("_Surface", 1f); // 0=Opaque, 1=Transparent
+            mat.SetFloat("_Blend", 0f);   // Alpha blend
+            mat.SetFloat("_AlphaClip", 0f);
+            mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.SetFloat("_ZWrite", 0f);
+            mat.renderQueue = (int)RenderQueue.Transparent;
+            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+
+            Color cloudColor = cloudColors[i % cloudColors.Length];
+            mat.color = new Color(cloudColor.r, cloudColor.g, cloudColor.b, alpha);
+            mat.SetColor("_EmissionColor", cloudColor * 0.4f);
+            mat.EnableKeyword("_EMISSION");
+
+            var mr = cloudObj.AddComponent<MeshRenderer>();
+            mr.material = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+
+            // Slow rotation
+            cloudObj.AddComponent<NebulaCloudRotator>();
+        }
+    }
+}
+
+/// <summary>
+/// Slowly rotates a nebula cloud quad for subtle motion.
+/// </summary>
+public class NebulaCloudRotator : MonoBehaviour
+{
+    private float _speed;
+
+    private void Start()
+    {
+        _speed = Random.Range(0.5f, Constants.NEBULA_CLOUD_ROT_SPEED);
+        if (Random.value > 0.5f) _speed = -_speed;
+    }
+
+    private void Update()
+    {
+        transform.Rotate(Vector3.forward, _speed * Time.deltaTime, Space.Self);
     }
 }
