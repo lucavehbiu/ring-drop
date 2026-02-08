@@ -36,7 +36,7 @@ public class StickController : MonoBehaviour
         GameObject root = new GameObject("Stick");
         var ctrl = root.AddComponent<StickController>();
 
-        // Main cylinder — keep collider for ring-stick interaction
+        // Main cylinder — ring physically collides and slides down
         var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         body.name = "StickBody";
         body.tag = "Stick";
@@ -50,24 +50,24 @@ public class StickController : MonoBehaviour
         SetEmissiveColor(body, Constants.MAGENTA, 0.55f, keepCollider: true);
         ctrl.stickBody = body;
 
-        // Base — keep collider
+        // Base — visual only, no collider (ring slides past to ground)
         var baseObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         baseObj.name = "StickBase";
         baseObj.tag = "Stick";
         baseObj.transform.SetParent(root.transform);
         baseObj.transform.localPosition = new Vector3(0f, 0.06f, 0f);
         baseObj.transform.localScale = new Vector3(0.7f, 0.06f, 0.7f);
-        SetEmissiveColor(baseObj, Constants.MAGENTA * 0.6f, 0.4f, keepCollider: true);
+        SetEmissiveColor(baseObj, Constants.MAGENTA * 0.6f, 0.4f, keepCollider: false);
         ctrl.stickBase = baseObj;
 
-        // Cap (sphere on top) — keep collider
+        // Cap (sphere on top) — visual only, no collider (so ring slides past)
         var cap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         cap.name = "StickCap";
         cap.tag = "Stick";
         cap.transform.SetParent(root.transform);
         cap.transform.localPosition = new Vector3(0f, Constants.STICK_HEIGHT, 0f);
         cap.transform.localScale = Vector3.one * 0.26f;
-        SetEmissiveColor(cap, Constants.MAGENTA, 0.85f, keepCollider: true);
+        SetEmissiveColor(cap, Constants.MAGENTA, 0.85f, keepCollider: false);
         ctrl.stickCap = cap;
 
         // Guide bands — visual only, no colliders

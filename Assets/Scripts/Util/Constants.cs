@@ -8,7 +8,8 @@ using UnityEngine;
 public static class Constants
 {
     // Ring forces (applied via Rigidbody.AddForce)
-    public const float LIFT_FORCE    = 12f;    // upward force when holding
+    public const float FLAP_IMPULSE  = 5.5f;   // upward impulse per tap (flappy style)
+    public const float LIFT_FORCE    = 12f;    // (legacy, unused)
     public const float H_FORCE       = 7f;     // horizontal steering force
     public const float MAX_VX        = 4.5f;   // horizontal velocity clamp
     public const float MAX_VY        = 6f;     // upward velocity clamp

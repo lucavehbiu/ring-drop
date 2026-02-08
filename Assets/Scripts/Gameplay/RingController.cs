@@ -19,6 +19,8 @@ public class RingController : MonoBehaviour
     private bool _windGusts;
     private float _windGust;
     private LevelData _cfg;
+    private bool _flapQueued;    // buffered tap from Update → FixedUpdate
+    private bool _onStick;       // ring caught the pole, tumbling down
 
     // Success settle animation (post-physics)
     private bool _settling;
@@ -47,6 +49,8 @@ public class RingController : MonoBehaviour
         _landed = false;
         _settling = false;
         _settleTime = 0f;
+        _flapQueued = false;
+        _onStick = false;
 
         transform.position = new Vector3(0f, 4.5f, 2f);
         transform.rotation = Quaternion.identity;
@@ -112,6 +116,14 @@ public class RingController : MonoBehaviour
         }
     }
 
+    private void Update()
+    {
+        // Buffer taps from Update (input) for consumption in FixedUpdate (physics)
+        var input = GameInput.Instance;
+        if (input != null && input.WasTapped)
+            _flapQueued = true;
+    }
+
     private void FixedUpdate()
     {
         var gm = GameManager.Instance;
@@ -128,13 +140,32 @@ public class RingController : MonoBehaviour
     {
         var input = GameInput.Instance;
         if (input == null) return;
+        var gm = GameManager.Instance;
 
         float dt = Time.fixedDeltaTime;
         _playTime += dt;
 
-        // Lift force when holding
-        if (input.IsHolding)
-            _rb.AddForce(Vector3.up * Constants.LIFT_FORCE, ForceMode.Acceleration);
+        // --- Ring caught the pole: no input, just tumble down via gravity ---
+        if (_onStick)
+        {
+            // Let physics handle the tumble, just kill forward/horizontal drift
+            Vector3 vel = _rb.linearVelocity;
+            vel.z *= 0.9f;
+            vel.x *= 0.9f;
+            _rb.linearVelocity = vel;
+            return;
+        }
+
+        // --- Normal flight ---
+
+        // Flappy-style: each tap gives an upward impulse, gravity always pulls down
+        if (_flapQueued)
+        {
+            Vector3 v = _rb.linearVelocity;
+            if (v.y < 0f) { v.y = 0f; _rb.linearVelocity = v; }
+            _rb.AddForce(Vector3.up * Constants.FLAP_IMPULSE, ForceMode.VelocityChange);
+            _flapQueued = false;
+        }
 
         // Grace period auto-lift
         if (_playTime < Constants.GRACE_DURATION)
@@ -148,28 +179,26 @@ public class RingController : MonoBehaviour
         _rb.AddForce(Vector3.right * steer, ForceMode.Acceleration);
 
         // Wind
-        var gm = GameManager.Instance;
         float windBase = Mathf.Sin(Time.fixedTime + gm.Level) * _wind;
         if (_windGusts && Random.value < 0.05f * dt * 60f)
             _windGust = (Random.value - 0.5f) * _wind * 2f;
         _windGust *= 0.97f;
         _rb.AddForce(Vector3.right * (windBase + _windGust), ForceMode.Acceleration);
 
-        // Forward movement — constant speed, ring never stops
-        Vector3 vel = _rb.linearVelocity;
-        vel.z = -_forwardSpeed;
+        // Forward movement — constant speed
+        Vector3 vel2 = _rb.linearVelocity;
+        vel2.z = -_forwardSpeed;
 
-        // If ring flew past the stick and hits the ground, OnCollisionEnter handles it.
-        // If ring flew way past (no ground hit), fail out.
+        // If ring flew way past the stick, fail out
         if (transform.position.z < _targetZ - 15f)
         {
             gm.OnFail("flew past");
         }
 
         // Clamp velocities
-        vel.x = Mathf.Clamp(vel.x, -Constants.MAX_VX, Constants.MAX_VX);
-        vel.y = Mathf.Clamp(vel.y, Constants.MIN_VY, Constants.MAX_VY);
-        _rb.linearVelocity = vel;
+        vel2.x = Mathf.Clamp(vel2.x, -Constants.MAX_VX, Constants.MAX_VX);
+        vel2.y = Mathf.Clamp(vel2.y, Constants.MIN_VY, Constants.MAX_VY);
+        _rb.linearVelocity = vel2;
 
         // Clamp horizontal position
         Vector3 pos = transform.position;
@@ -177,13 +206,13 @@ public class RingController : MonoBehaviour
         {
             pos.x = Mathf.Clamp(pos.x, -5f, 5f);
             transform.position = pos;
-            vel.x = 0f;
-            _rb.linearVelocity = vel;
+            vel2.x = 0f;
+            _rb.linearVelocity = vel2;
         }
 
         // Visual tilt via torque
-        float pitchTorque = vel.y * Constants.TILT_PITCH;
-        float rollTorque = -vel.x * Constants.TILT_ROLL;
+        float pitchTorque = vel2.y * Constants.TILT_PITCH;
+        float rollTorque = -vel2.x * Constants.TILT_ROLL;
         _rb.AddTorque(pitchTorque, 0f, rollTorque, ForceMode.Acceleration);
 
         // Dampen angular velocity so ring doesn't spin wildly
@@ -192,8 +221,8 @@ public class RingController : MonoBehaviour
         // Soft ceiling
         if (pos.y > 12f)
         {
-            vel.y = Mathf.Min(vel.y, -2f);
-            _rb.linearVelocity = vel;
+            vel2.y = Mathf.Min(vel2.y, -2f);
+            _rb.linearVelocity = vel2;
         }
 
         // Fell off screen
@@ -227,17 +256,28 @@ public class RingController : MonoBehaviour
 
     /// <summary>
     /// Called by Unity physics when the ring collides with something.
-    /// We use this to detect ground landing.
+    /// Stick contact → ring caught the pole, tumble down.
+    /// Ground contact → check if stick is inside ring hole.
     /// </summary>
     private void OnCollisionEnter(Collision collision)
     {
-        if (_landed) return;
-
         var gm = GameManager.Instance;
         if (gm == null || gm.State != GameManager.GameState.Playing) return;
 
-        // Check if we hit the ground
-        if (collision.gameObject.CompareTag("Ground"))
+        // Ring hits the stick pole → caught! Stop flying, tumble down.
+        if (!_onStick && collision.gameObject.CompareTag("Stick"))
+        {
+            _onStick = true;
+            _flapQueued = false;
+            // Kill forward velocity so ring drops straight down the pole
+            Vector3 v = _rb.linearVelocity;
+            v.z = 0f;
+            v.x *= 0.3f;
+            _rb.linearVelocity = v;
+        }
+
+        // Ring hits the ground
+        if (!_landed && collision.gameObject.CompareTag("Ground"))
         {
             _landed = true;
 
@@ -250,7 +290,7 @@ public class RingController : MonoBehaviour
             float holeRadius = Constants.RING_RADIUS - Constants.RING_TUBE;
             var cfg = LevelConfig.Get(gm.Level);
 
-            if (dist < holeRadius * cfg.tolerance * 2f)
+            if (_onStick && dist < holeRadius * cfg.tolerance * 2f)
             {
                 gm.OnSuccess();
             }
