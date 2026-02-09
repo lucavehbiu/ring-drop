@@ -26,7 +26,7 @@ public static class Constants
 
     // Physics materials
     public const float RING_BOUNCE   = 0.35f;  // bounciness on ground impact
-    public const float RING_FRICTION = 0.5f;
+    public const float RING_FRICTION = 0.15f;  // low friction so ring slides down pole
     public const float GROUND_BOUNCE = 0.2f;
     public const float GROUND_FRICTION = 0.6f;
 
@@ -112,4 +112,28 @@ public static class Constants
     public static readonly Color AMBIENT_COLOR = new Color(0.08f, 0.04f, 0.16f);
     public const float FOG_DENSITY = 0.012f;
     public static readonly Color FOG_COLOR = new Color(0.015f, 0.005f, 0.06f);
+
+    // === Depth of Field (Bokeh) ===
+    public const float DOF_FOCUS_DIST = 15f;
+    public const float DOF_APERTURE = 5.6f;
+    public const float DOF_FOCAL_LENGTH = 50f;
+
+    // === Color Grading ===
+    public const float CG_EXPOSURE = 0.3f;
+    public const float CG_CONTRAST = 15f;
+    public const float CG_SATURATION = 10f;
+
+    // === Ring PBR ===
+    public const float RING_METALLIC = 0.85f;
+    public const float RING_SMOOTHNESS = 0.9f;
+
+    // === Particles ===
+    public const int TRAIL_RATE = 40;
+    public const int BURST_COUNT = 50;
+    public const int DUST_COUNT = 200;
+
+    // === Ground Pulse ===
+    public const float GROUND_PULSE_MIN = 0.2f;
+    public const float GROUND_PULSE_MAX = 0.5f;
+    public const float GROUND_PULSE_PERIOD = 4f;
 }

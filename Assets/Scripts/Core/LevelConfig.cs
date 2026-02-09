@@ -17,6 +17,7 @@ public struct LevelData
     public bool windGusts;
     public int shipCount;
     public float shipSpeed;
+    public int asteroidCount;
 }
 
 public static class LevelConfig
@@ -27,15 +28,16 @@ public static class LevelConfig
     {
         return new LevelData
         {
-            stickZ     = -(20f + level * 3f),                                          // closer at start (was -25)
+            stickZ     = -(50f + level * 5f),                                          // far enough for player to adjust
             stickX     = level <= 1 ? 0f : Mathf.Sin(level * 1.4f) * Mathf.Min(level * 0.3f, 2.2f),
             speed      = 5.5f + level * 0.4f,                                            // moderate pace
             gravity    = -5.5f - Mathf.Max(0, level - 2) * 0.4f,                       // gentle at first, ramps from lvl 3
             tolerance  = Mathf.Max(0.22f, 0.55f - (level - 1) * 0.03f),                 // level 1 = 0.55, level 12+ = 0.22
-            wind       = level <= 1 ? 0.1f : 0.2f + (level - 1) * 0.12f,               // almost no wind level 1
-            windGusts  = level >= 3,                                                     // gusts start later (was 2)
+            wind       = 0f,                                                              // no wind
+            windGusts  = false,                                                            // no gusts
             shipCount  = Mathf.Min(Mathf.FloorToInt(level * 1.2f), MAX_SHIPS),
-            shipSpeed  = 3f + level * 0.5f
+            shipSpeed  = 3f + level * 0.5f,
+            asteroidCount = level <= 1 ? 0 : Mathf.Min(2 + (level - 2) * 2, 16)
         };
     }
 }

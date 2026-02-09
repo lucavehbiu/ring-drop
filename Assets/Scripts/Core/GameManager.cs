@@ -98,6 +98,10 @@ public class GameManager : MonoBehaviour
         ring.Freeze(); // frozen during countdown
         cam.Reset();
 
+        // Spawn obstacles (asteroids from level 2+)
+        if (ObstacleManager.Instance != null)
+            ObstacleManager.Instance.SpawnForLevel(cfg);
+
         _countdownTimer = 0f;
         SetState(GameState.Countdown);
     }

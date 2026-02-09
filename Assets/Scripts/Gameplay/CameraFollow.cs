@@ -15,8 +15,15 @@ public class CameraFollow : MonoBehaviour
     private CinemachineCamera _menuCam;
     private CinemachineCamera _successCam;
     private Camera _mainCam;
+    private CinemachineFollow _playingFollow;
 
     private float _menuTime;
+
+    // Camera offset lerp: far = behind ring, close = left side view
+    private static readonly Vector3 FAR_OFFSET = new Vector3(0f, 2.5f, 7f);
+    private static readonly Vector3 CLOSE_OFFSET = new Vector3(-8f, 3f, 0f);
+    private const float APPROACH_START = 25f; // start transitioning at this distance
+    private const float APPROACH_END = 5f;    // fully side-on at this distance
 
     private void Awake()
     {
@@ -46,9 +53,9 @@ public class CameraFollow : MonoBehaviour
         playLens.FarClipPlane = 500f;
         _playingCam.Lens = playLens;
 
-        // Follow behavior — position behind and above
-        var follow = playObj.AddComponent<CinemachineFollow>();
-        follow.FollowOffset = new Vector3(0f, 2.5f, 7f);
+        // Follow behavior — position behind and above (offset lerps as ring approaches stick)
+        _playingFollow = playObj.AddComponent<CinemachineFollow>();
+        _playingFollow.FollowOffset = FAR_OFFSET;
 
         // Rotation composer for smooth aim
         var composer = playObj.AddComponent<CinemachineRotationComposer>();
@@ -120,8 +127,10 @@ public class CameraFollow : MonoBehaviour
     {
         if (GameManager.Instance == null) return;
 
+        var state = GameManager.Instance.State;
+
         // Menu camera gentle float
-        if (GameManager.Instance.State == GameManager.GameState.Menu && _menuCam != null)
+        if (state == GameManager.GameState.Menu && _menuCam != null)
         {
             _menuTime += Time.deltaTime;
             _menuCam.transform.position = new Vector3(
@@ -131,10 +140,21 @@ public class CameraFollow : MonoBehaviour
             );
             _menuCam.transform.LookAt(new Vector3(0f, 3f, -10f));
         }
+
+        // During gameplay, lerp camera from behind to left side as ring approaches stick
+        if ((state == GameManager.GameState.Playing || state == GameManager.GameState.Countdown)
+            && _playingFollow != null && ring != null)
+        {
+            float dist = ring.DistanceToStick;
+            float t = 1f - Mathf.Clamp01((dist - APPROACH_END) / (APPROACH_START - APPROACH_END));
+            t = t * t * (3f - 2f * t); // smoothstep for nice ease
+            _playingFollow.FollowOffset = Vector3.Lerp(FAR_OFFSET, CLOSE_OFFSET, t);
+        }
     }
 
     public void Reset()
     {
-        // Cinemachine handles everything, nothing to reset
+        if (_playingFollow != null)
+            _playingFollow.FollowOffset = FAR_OFFSET;
     }
 }

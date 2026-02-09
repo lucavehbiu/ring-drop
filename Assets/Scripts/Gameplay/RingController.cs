@@ -2,9 +2,9 @@ using UnityEngine;
 
 /// <summary>
 /// Ring physics controller using Unity's Rigidbody.
-/// Player holds to rise, releases to let gravity pull ring down.
-/// Steers left/right. Success = ring lands on ground with stick inside hole.
-/// Unity handles gravity, collisions, bouncing via Rigidbody + PhysicsMaterials.
+/// Player taps to flap (flappy bird style), gravity pulls ring down.
+/// Steers left/right. When ring catches the stick pole, it slides down
+/// with wobble/tumble until it hits the ground = success.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class RingController : MonoBehaviour
@@ -20,7 +20,10 @@ public class RingController : MonoBehaviour
     private float _windGust;
     private LevelData _cfg;
     private bool _flapQueued;    // buffered tap from Update → FixedUpdate
-    private bool _onStick;       // ring caught the pole, tumbling down
+    private bool _onStick;       // ring caught the pole, sliding down
+    private float _onStickTime;  // time since catching the pole
+    private Collider _stickCollider; // cached for collision ignore
+    private RingTrailEffect _trail;
 
     // Success settle animation (post-physics)
     private bool _settling;
@@ -28,12 +31,13 @@ public class RingController : MonoBehaviour
 
     public float VX => _rb != null ? _rb.linearVelocity.x : 0f;
     public float VY => _rb != null ? _rb.linearVelocity.y : 0f;
-    public float Progress => 1f - Mathf.Abs(_targetZ - transform.position.z) / Mathf.Abs(_targetZ - 2f);
+    public float Progress => 1f - Mathf.Abs(_targetZ - transform.position.z) / Mathf.Abs(_targetZ - 10f);
     public float DistanceToStick => Mathf.Abs(_targetZ - transform.position.z);
 
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
+        _trail = GetComponentInChildren<RingTrailEffect>();
     }
 
     public void Setup(LevelData cfg)
@@ -51,8 +55,10 @@ public class RingController : MonoBehaviour
         _settleTime = 0f;
         _flapQueued = false;
         _onStick = false;
+        _onStickTime = 0f;
+        _stickCollider = null;
 
-        transform.position = new Vector3(0f, 4.5f, 2f);
+        transform.position = new Vector3(0f, 4.5f, 10f);
         transform.rotation = Quaternion.identity;
         transform.localScale = Vector3.one;
 
@@ -100,10 +106,11 @@ public class RingController : MonoBehaviour
     {
         if (_rb != null)
         {
-            _rb.isKinematic = true;
             _rb.linearVelocity = Vector3.zero;
             _rb.angularVelocity = Vector3.zero;
+            _rb.isKinematic = true;
         }
+        if (_trail != null) _trail.EnableTrail(false);
     }
 
     /// <summary>Unfreeze for gameplay.</summary>
@@ -114,6 +121,7 @@ public class RingController : MonoBehaviour
             _rb.isKinematic = false;
             _rb.useGravity = true;
         }
+        if (_trail != null) _trail.EnableTrail(true);
     }
 
     private void Update()
@@ -145,14 +153,36 @@ public class RingController : MonoBehaviour
         float dt = Time.fixedDeltaTime;
         _playTime += dt;
 
-        // --- Ring caught the pole: no input, just tumble down via gravity ---
+        // --- Ring caught the pole: slide down with wobble (no physics collision) ---
         if (_onStick)
         {
-            // Let physics handle the tumble, just kill forward/horizontal drift
+            _onStickTime += dt;
+
+            // Constrain ring X/Z to stick position with wobble
+            Vector3 sPos = transform.position;
+            float wobble = Mathf.Sin(_onStickTime * 8f) * 0.05f;
+            float targetX = _targetX + wobble;
+            float targetZ = _targetZ + Mathf.Cos(_onStickTime * 6f) * 0.03f;
+
+            // Spring toward stick center (fast)
+            sPos.x = Mathf.Lerp(sPos.x, targetX, dt * 12f);
+            sPos.z = Mathf.Lerp(sPos.z, targetZ, dt * 12f);
+            transform.position = sPos;
+
+            // Kill horizontal velocity, let gravity pull down
             Vector3 vel = _rb.linearVelocity;
-            vel.z *= 0.9f;
-            vel.x *= 0.9f;
+            vel.x = 0f;
+            vel.z = 0f;
             _rb.linearVelocity = vel;
+
+            // Add tumble rotation for visual drama
+            _rb.AddTorque(
+                Mathf.Sin(_onStickTime * 5f) * 2f,
+                Mathf.Cos(_onStickTime * 3f) * 1f,
+                Mathf.Sin(_onStickTime * 7f) * 2f,
+                ForceMode.Acceleration
+            );
+
             return;
         }
 
@@ -259,27 +289,47 @@ public class RingController : MonoBehaviour
     /// Stick contact → ring caught the pole, tumble down.
     /// Ground contact → check if stick is inside ring hole.
     /// </summary>
+    private static bool HasTag(GameObject obj, string tag)
+    {
+        try { return obj.CompareTag(tag); }
+        catch { return obj.name.Contains(tag); }
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
         var gm = GameManager.Instance;
         if (gm == null || gm.State != GameManager.GameState.Playing) return;
 
-        // Ring hits the stick pole → caught! Stop flying, tumble down.
-        if (!_onStick && collision.gameObject.CompareTag("Stick"))
+        // Ring hits an asteroid → fail
+        if (HasTag(collision.gameObject, "Obstacle"))
+        {
+            gm.OnFail("asteroid");
+            return;
+        }
+
+        // Ring hits the stick pole → caught! Disable collision, slide down.
+        if (!_onStick && HasTag(collision.gameObject, "Stick"))
         {
             _onStick = true;
+            _onStickTime = 0f;
             _flapQueued = false;
-            // Kill forward velocity so ring drops straight down the pole
+
+            // Kill forward/horizontal velocity
             Vector3 v = _rb.linearVelocity;
             v.z = 0f;
-            v.x *= 0.3f;
+            v.x = 0f;
             _rb.linearVelocity = v;
+
+            // Disable collisions between ring and stick so ring slides freely
+            _stickCollider = collision.collider;
+            DisableStickCollisions();
         }
 
         // Ring hits the ground
-        if (!_landed && collision.gameObject.CompareTag("Ground"))
+        if (!_landed && HasTag(collision.gameObject, "Ground"))
         {
             _landed = true;
+            if (_trail != null) _trail.EnableTrail(false);
 
             // Check: is the stick base inside the ring hole?
             Vector3 pos = transform.position;
@@ -290,13 +340,42 @@ public class RingController : MonoBehaviour
             float holeRadius = Constants.RING_RADIUS - Constants.RING_TUBE;
             var cfg = LevelConfig.Get(gm.Level);
 
-            if (_onStick && dist < holeRadius * cfg.tolerance * 2f)
-            {
+            bool success = _onStick && dist < holeRadius * cfg.tolerance * 2f;
+
+            // Landing burst particles
+            var burst = LandingBurstEffect.Instance;
+            if (burst != null) burst.Burst(pos, success);
+
+            if (success)
                 gm.OnSuccess();
-            }
             else
-            {
                 gm.OnFail("missed");
+        }
+    }
+
+    /// <summary>
+    /// Disable collisions between all ring box colliders and the stick collider.
+    /// This lets the ring slide down freely without getting wedged.
+    /// </summary>
+    private void DisableStickCollisions()
+    {
+        if (_stickCollider == null) return;
+
+        // Get all colliders on the ring (the 12 box colliders on child objects)
+        var ringColliders = GetComponentsInChildren<Collider>();
+        foreach (var ringCol in ringColliders)
+        {
+            Physics.IgnoreCollision(ringCol, _stickCollider, true);
+        }
+
+        // Also ignore all other stick colliders (cap, base, etc.)
+        var stickRoot = _stickCollider.transform.root;
+        var stickColliders = stickRoot.GetComponentsInChildren<Collider>();
+        foreach (var stickCol in stickColliders)
+        {
+            foreach (var ringCol in ringColliders)
+            {
+                Physics.IgnoreCollision(ringCol, stickCol, true);
             }
         }
     }

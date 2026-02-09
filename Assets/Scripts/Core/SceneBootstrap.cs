@@ -37,6 +37,11 @@ public class SceneBootstrap : MonoBehaviour
             CinemachineBlendDefinition.Styles.EaseInOut, 1.2f
         );
 
+        // === TAA — biggest clarity upgrade ===
+        var urpCamData = mainCam.GetUniversalAdditionalCameraData();
+        urpCamData.antialiasing = AntialiasingMode.TemporalAntiAliasing;
+        urpCamData.antialiasingQuality = AntialiasingQuality.High;
+
         // === FOG (boosted) ===
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Exponential;
@@ -52,7 +57,10 @@ public class SceneBootstrap : MonoBehaviour
         dl.type = LightType.Directional;
         dl.color = new Color(0.2f, 0.15f, 0.7f);
         dl.intensity = Constants.DIR_LIGHT_INTENSITY;
+        dl.shadows = LightShadows.Soft;
         dirLight.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+        var dlData = dl.GetComponent<UniversalAdditionalLightData>();
+        if (dlData != null) dlData.softShadowQuality = SoftShadowQuality.High;
 
         var fillObj = new GameObject("FillLight");
         var fl = fillObj.AddComponent<Light>();
@@ -109,7 +117,9 @@ public class SceneBootstrap : MonoBehaviour
 
         var ringMat = new Material(urpLit);
         ringMat.color = Constants.CYAN;
-        ringMat.SetColor("_EmissionColor", Constants.CYAN * 0.8f);
+        ringMat.SetFloat("_Metallic", Constants.RING_METALLIC);
+        ringMat.SetFloat("_Smoothness", Constants.RING_SMOOTHNESS);
+        ringMat.SetColor("_EmissionColor", Constants.CYAN * 1.5f);
         ringMat.EnableKeyword("_EMISSION");
         meshRenderer.material = ringMat;
 
@@ -127,6 +137,12 @@ public class SceneBootstrap : MonoBehaviour
 
         ringLightObj.transform.SetParent(ringObj.transform);
         ringLightObj.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+
+        // Ring trail particles (child of ring)
+        var trailObj = new GameObject("RingTrail");
+        trailObj.transform.SetParent(ringObj.transform, false);
+        trailObj.transform.localPosition = Vector3.zero;
+        trailObj.AddComponent<RingTrailEffect>();
 
         // === STICK ===
         var stickCtrl = StickController.CreateStick();
@@ -156,6 +172,29 @@ public class SceneBootstrap : MonoBehaviour
         if (groundCollider != null)
             groundCollider.material = groundPhysMat;
 
+        // Ground pulse effect
+        ground.AddComponent<GroundPulse>();
+
+        // === LANDING BURST PARTICLES ===
+        var burstObj = new GameObject("LandingBurst");
+        burstObj.AddComponent<LandingBurstEffect>();
+
+        // === AMBIENT SPACE DUST ===
+        var dustObj = new GameObject("SpaceDust");
+        dustObj.AddComponent<AmbientSpaceDust>();
+
+        // === REFLECTION PROBE — ground reflects ring/stars/nebula ===
+        var probeObj = new GameObject("ReflectionProbe");
+        probeObj.transform.position = new Vector3(0f, 0.5f, -50f);
+        var probe = probeObj.AddComponent<ReflectionProbe>();
+        probe.mode = ReflectionProbeMode.Realtime;
+        probe.refreshMode = ReflectionProbeRefreshMode.EveryFrame;
+        probe.size = new Vector3(200f, 30f, 200f);
+        probe.resolution = 256;
+        probe.hdr = true;
+        probe.nearClipPlane = 0.3f;
+        probe.farClipPlane = 300f;
+
         // === INVISIBLE WALLS to keep ring in bounds ===
         CreateWall("WallLeft", new Vector3(-6f, 5f, -100f), new Vector3(0.1f, 10f, 200f));
         CreateWall("WallRight", new Vector3(6f, 5f, -100f), new Vector3(0.1f, 10f, 200f));
@@ -167,6 +206,10 @@ public class SceneBootstrap : MonoBehaviour
         // === GAME MANAGER ===
         var gmObj = new GameObject("GameManager");
         gmObj.AddComponent<GameManager>();
+
+        // === OBSTACLE MANAGER ===
+        var obstObj = new GameObject("ObstacleManager");
+        obstObj.AddComponent<ObstacleManager>();
 
         // === UI MANAGER ===
         var uiObj = new GameObject("UIManager");
@@ -184,6 +227,9 @@ public class SceneBootstrap : MonoBehaviour
 
         // === NEBULA CLOUDS ===
         CreateNebulaClouds(urpLit);
+
+        // === SOLAR SYSTEM ===
+        CreateSolarSystem(urpLit);
 
         // === POST-PROCESSING ===
         ConfigurePostProcessing();
@@ -286,6 +332,41 @@ public class SceneBootstrap : MonoBehaviour
             lensFlare = profile.Add<ScreenSpaceLensFlare>();
         lensFlare.active = true;
         lensFlare.intensity.Override(Constants.PP_LENS_FLARE_INTENSITY);
+
+        // === Depth of Field (Bokeh) — cinematic focus ===
+        if (!profile.TryGet<DepthOfField>(out var dof))
+            dof = profile.Add<DepthOfField>();
+        dof.active = true;
+        dof.mode.Override(DepthOfFieldMode.Bokeh);
+        dof.focusDistance.Override(Constants.DOF_FOCUS_DIST);
+        dof.aperture.Override(Constants.DOF_APERTURE);
+        dof.focalLength.Override(Constants.DOF_FOCAL_LENGTH);
+        dof.bladeCurvature.Override(1f);
+        dof.bladeCount.Override(6);
+
+        // === Color Adjustments — punchier, slightly cool ===
+        if (!profile.TryGet<ColorAdjustments>(out var colorAdj))
+            colorAdj = profile.Add<ColorAdjustments>();
+        colorAdj.active = true;
+        colorAdj.postExposure.Override(Constants.CG_EXPOSURE);
+        colorAdj.contrast.Override(Constants.CG_CONTRAST);
+        colorAdj.saturation.Override(Constants.CG_SATURATION);
+        colorAdj.colorFilter.Override(new Color(0.9f, 0.95f, 1f));
+
+        // === Split Toning — cyan shadows, warm gold highlights ===
+        if (!profile.TryGet<SplitToning>(out var split))
+            split = profile.Add<SplitToning>();
+        split.active = true;
+        split.shadows.Override(new Color(0.2f, 0.6f, 0.8f));
+        split.highlights.Override(new Color(1f, 0.85f, 0.6f));
+        split.balance.Override(-20f);
+
+        // === Lift Gamma Gain — crush blacks, boost highlights ===
+        if (!profile.TryGet<LiftGammaGain>(out var lgg))
+            lgg = profile.Add<LiftGammaGain>();
+        lgg.active = true;
+        lgg.lift.Override(new Vector4(0.95f, 0.95f, 1.05f, -0.05f));
+        lgg.gain.Override(new Vector4(1.05f, 1.02f, 0.98f, 0.1f));
     }
 
     // ========== STARFIELD (3 layers, ~4300 stars) ==========
@@ -516,6 +597,136 @@ public class SceneBootstrap : MonoBehaviour
             cloudObj.AddComponent<NebulaCloudRotator>();
         }
     }
+
+    // ========== SOLAR SYSTEM ==========
+
+    private void CreateSolarSystem(Shader shader)
+    {
+        var root = new GameObject("SolarSystem");
+        root.transform.position = new Vector3(-60f, 80f, -120f);
+
+        // Sun — large glowing sphere with point light
+        var sun = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        sun.name = "Sun";
+        sun.transform.SetParent(root.transform, false);
+        sun.transform.localPosition = Vector3.zero;
+        sun.transform.localScale = Vector3.one * 12f;
+        Object.Destroy(sun.GetComponent<Collider>());
+
+        var sunMat = new Material(shader);
+        var sunColor = new Color(1f, 0.85f, 0.3f);
+        sunMat.color = sunColor;
+        sunMat.SetColor("_EmissionColor", sunColor * 4f);
+        sunMat.EnableKeyword("_EMISSION");
+        sun.GetComponent<Renderer>().material = sunMat;
+
+        var sunLight = sun.AddComponent<Light>();
+        sunLight.type = LightType.Point;
+        sunLight.color = sunColor;
+        sunLight.intensity = 2f;
+        sunLight.range = 200f;
+
+        // Planet definitions: name, orbit radius, size, color, emission multiplier, orbit speed
+        var planets = new[]
+        {
+            new { name = "Mercury", orbit = 10f,  size = 0.6f,  col = new Color(0.6f, 0.5f, 0.4f),  em = 0.3f, speed = 12f },
+            new { name = "Venus",   orbit = 15f,  size = 1.0f,  col = new Color(0.9f, 0.7f, 0.3f),  em = 0.4f, speed = 8f },
+            new { name = "Earth",   orbit = 22f,  size = 1.1f,  col = new Color(0.2f, 0.5f, 0.9f),  em = 0.5f, speed = 6f },
+            new { name = "Mars",    orbit = 30f,  size = 0.8f,  col = new Color(0.8f, 0.3f, 0.1f),  em = 0.35f, speed = 4.5f },
+            new { name = "Jupiter", orbit = 45f,  size = 3.5f,  col = new Color(0.8f, 0.6f, 0.4f),  em = 0.3f, speed = 2f },
+            new { name = "Saturn",  orbit = 60f,  size = 3.0f,  col = new Color(0.9f, 0.8f, 0.5f),  em = 0.3f, speed = 1.5f },
+            new { name = "Uranus",  orbit = 75f,  size = 2.0f,  col = new Color(0.5f, 0.8f, 0.9f),  em = 0.4f, speed = 1f },
+            new { name = "Neptune", orbit = 90f,  size = 1.9f,  col = new Color(0.2f, 0.3f, 0.9f),  em = 0.5f, speed = 0.7f },
+        };
+
+        foreach (var p in planets)
+        {
+            // Orbit pivot — rotates around the sun
+            var pivot = new GameObject($"{p.name}_Orbit");
+            pivot.transform.SetParent(root.transform, false);
+            pivot.transform.localPosition = Vector3.zero;
+            // Start each planet at a random angle
+            pivot.transform.localRotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+
+            var orbiter = pivot.AddComponent<PlanetOrbiter>();
+            orbiter.orbitSpeed = p.speed;
+
+            // Planet sphere
+            var planet = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            planet.name = p.name;
+            planet.transform.SetParent(pivot.transform, false);
+            planet.transform.localPosition = new Vector3(p.orbit, 0f, 0f);
+            planet.transform.localScale = Vector3.one * p.size;
+            Object.Destroy(planet.GetComponent<Collider>());
+
+            var mat = new Material(shader);
+            mat.color = p.col;
+            mat.SetColor("_EmissionColor", p.col * p.em);
+            mat.EnableKeyword("_EMISSION");
+            mat.SetFloat("_Smoothness", 0.6f);
+            planet.GetComponent<Renderer>().material = mat;
+
+            // Saturn gets a ring
+            if (p.name == "Saturn")
+            {
+                CreatePlanetRing(planet.transform, shader, p.size, p.col);
+            }
+
+            // Earth gets a tiny moon
+            if (p.name == "Earth")
+            {
+                var moonPivot = new GameObject("Moon_Orbit");
+                moonPivot.transform.SetParent(planet.transform, false);
+                moonPivot.transform.localPosition = Vector3.zero;
+                var moonOrbiter = moonPivot.AddComponent<PlanetOrbiter>();
+                moonOrbiter.orbitSpeed = 25f;
+
+                var moon = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                moon.name = "Moon";
+                moon.transform.SetParent(moonPivot.transform, false);
+                moon.transform.localPosition = new Vector3(2f, 0f, 0f);
+                moon.transform.localScale = Vector3.one * 0.3f;
+                Object.Destroy(moon.GetComponent<Collider>());
+
+                var moonMat = new Material(shader);
+                moonMat.color = new Color(0.7f, 0.7f, 0.7f);
+                moonMat.SetColor("_EmissionColor", new Color(0.7f, 0.7f, 0.7f) * 0.3f);
+                moonMat.EnableKeyword("_EMISSION");
+                moon.GetComponent<Renderer>().material = moonMat;
+            }
+        }
+    }
+
+    private void CreatePlanetRing(Transform planet, Shader shader, float planetSize, Color color)
+    {
+        // Ring = flattened torus approximated by a cylinder
+        var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.name = "SaturnRing";
+        ring.transform.SetParent(planet, false);
+        ring.transform.localPosition = Vector3.zero;
+        ring.transform.localScale = new Vector3(
+            planetSize * 1.8f,  // wide
+            0.02f,              // very thin
+            planetSize * 1.8f   // wide
+        );
+        Object.Destroy(ring.GetComponent<Collider>());
+
+        var mat = new Material(shader);
+        mat.SetFloat("_Surface", 1f);
+        mat.SetFloat("_Blend", 0f);
+        mat.SetFloat("_AlphaClip", 0f);
+        mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        mat.SetFloat("_ZWrite", 0f);
+        mat.renderQueue = (int)RenderQueue.Transparent;
+        mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+
+        var ringColor = new Color(color.r * 0.8f, color.g * 0.7f, color.b * 0.5f, 0.5f);
+        mat.color = ringColor;
+        mat.SetColor("_EmissionColor", ringColor * 0.3f);
+        mat.EnableKeyword("_EMISSION");
+        ring.GetComponent<Renderer>().material = mat;
+    }
 }
 
 /// <summary>
@@ -534,5 +745,18 @@ public class NebulaCloudRotator : MonoBehaviour
     private void Update()
     {
         transform.Rotate(Vector3.forward, _speed * Time.deltaTime, Space.Self);
+    }
+}
+
+/// <summary>
+/// Slowly orbits a planet around its parent (the sun).
+/// </summary>
+public class PlanetOrbiter : MonoBehaviour
+{
+    public float orbitSpeed = 5f;
+
+    private void Update()
+    {
+        transform.Rotate(Vector3.up, orbitSpeed * Time.deltaTime, Space.Self);
     }
 }
