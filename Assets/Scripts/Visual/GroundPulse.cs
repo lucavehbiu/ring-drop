@@ -20,7 +20,7 @@ public class GroundPulse : MonoBehaviour
 
     private void Update()
     {
-        if (_renderer == null) return;
+        if (_renderer == null || _mpb == null) return;
 
         float t = Mathf.Sin(Time.time * (2f * Mathf.PI / Constants.GROUND_PULSE_PERIOD));
         float intensity = Mathf.Lerp(Constants.GROUND_PULSE_MIN, Constants.GROUND_PULSE_MAX, (t + 1f) * 0.5f);

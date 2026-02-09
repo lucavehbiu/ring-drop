@@ -20,9 +20,7 @@ public class RingController : MonoBehaviour
     private float _windGust;
     private LevelData _cfg;
     private bool _flapQueued;    // buffered tap from Update → FixedUpdate
-    private bool _onStick;       // ring caught the pole, sliding down
-    private float _onStickTime;  // time since catching the pole
-    private Collider _stickCollider; // cached for collision ignore
+    private bool _hitStick;      // ring touched the stick at some point
     private RingTrailEffect _trail;
 
     // Success settle animation (post-physics)
@@ -54,9 +52,7 @@ public class RingController : MonoBehaviour
         _settling = false;
         _settleTime = 0f;
         _flapQueued = false;
-        _onStick = false;
-        _onStickTime = 0f;
-        _stickCollider = null;
+        _hitStick = false;
 
         transform.position = new Vector3(0f, 4.5f, 10f);
         transform.rotation = Quaternion.identity;
@@ -153,41 +149,6 @@ public class RingController : MonoBehaviour
         float dt = Time.fixedDeltaTime;
         _playTime += dt;
 
-        // --- Ring caught the pole: slide down with wobble (no physics collision) ---
-        if (_onStick)
-        {
-            _onStickTime += dt;
-
-            // Constrain ring X/Z to stick position with wobble
-            Vector3 sPos = transform.position;
-            float wobble = Mathf.Sin(_onStickTime * 8f) * 0.05f;
-            float targetX = _targetX + wobble;
-            float targetZ = _targetZ + Mathf.Cos(_onStickTime * 6f) * 0.03f;
-
-            // Spring toward stick center (fast)
-            sPos.x = Mathf.Lerp(sPos.x, targetX, dt * 12f);
-            sPos.z = Mathf.Lerp(sPos.z, targetZ, dt * 12f);
-            transform.position = sPos;
-
-            // Kill horizontal velocity, let gravity pull down
-            Vector3 vel = _rb.linearVelocity;
-            vel.x = 0f;
-            vel.z = 0f;
-            _rb.linearVelocity = vel;
-
-            // Add tumble rotation for visual drama
-            _rb.AddTorque(
-                Mathf.Sin(_onStickTime * 5f) * 2f,
-                Mathf.Cos(_onStickTime * 3f) * 1f,
-                Mathf.Sin(_onStickTime * 7f) * 2f,
-                ForceMode.Acceleration
-            );
-
-            return;
-        }
-
-        // --- Normal flight ---
-
         // Flappy-style: each tap gives an upward impulse, gravity always pulls down
         if (_flapQueued)
         {
@@ -215,9 +176,19 @@ public class RingController : MonoBehaviour
         _windGust *= 0.97f;
         _rb.AddForce(Vector3.right * (windBase + _windGust), ForceMode.Acceleration);
 
-        // Forward movement — constant speed
+        // Forward movement — constant speed until we reach the stick, then stop
         Vector3 vel2 = _rb.linearVelocity;
-        vel2.z = -_forwardSpeed;
+        float distToStick = transform.position.z - _targetZ;
+        if (distToStick > 1f)
+        {
+            // Still approaching — fly forward
+            vel2.z = -_forwardSpeed;
+        }
+        else
+        {
+            // At or past the stick — kill forward speed, let physics take over
+            vel2.z = Mathf.Lerp(vel2.z, 0f, Time.fixedDeltaTime * 8f);
+        }
 
         // If ring flew way past the stick, fail out
         if (transform.position.z < _targetZ - 15f)
@@ -307,22 +278,10 @@ public class RingController : MonoBehaviour
             return;
         }
 
-        // Ring hits the stick pole → caught! Disable collision, slide down.
-        if (!_onStick && HasTag(collision.gameObject, "Stick"))
+        // Ring hits the stick pole — just record it, let physics handle the rest
+        if (!_hitStick && HasTag(collision.gameObject, "Stick"))
         {
-            _onStick = true;
-            _onStickTime = 0f;
-            _flapQueued = false;
-
-            // Kill forward/horizontal velocity
-            Vector3 v = _rb.linearVelocity;
-            v.z = 0f;
-            v.x = 0f;
-            _rb.linearVelocity = v;
-
-            // Disable collisions between ring and stick so ring slides freely
-            _stickCollider = collision.collider;
-            DisableStickCollisions();
+            _hitStick = true;
         }
 
         // Ring hits the ground
@@ -340,7 +299,7 @@ public class RingController : MonoBehaviour
             float holeRadius = Constants.RING_RADIUS - Constants.RING_TUBE;
             var cfg = LevelConfig.Get(gm.Level);
 
-            bool success = _onStick && dist < holeRadius * cfg.tolerance * 2f;
+            bool success = dist < holeRadius * cfg.tolerance * 2f;
 
             // Landing burst particles
             var burst = LandingBurstEffect.Instance;
@@ -353,30 +312,4 @@ public class RingController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Disable collisions between all ring box colliders and the stick collider.
-    /// This lets the ring slide down freely without getting wedged.
-    /// </summary>
-    private void DisableStickCollisions()
-    {
-        if (_stickCollider == null) return;
-
-        // Get all colliders on the ring (the 12 box colliders on child objects)
-        var ringColliders = GetComponentsInChildren<Collider>();
-        foreach (var ringCol in ringColliders)
-        {
-            Physics.IgnoreCollision(ringCol, _stickCollider, true);
-        }
-
-        // Also ignore all other stick colliders (cap, base, etc.)
-        var stickRoot = _stickCollider.transform.root;
-        var stickColliders = stickRoot.GetComponentsInChildren<Collider>();
-        foreach (var stickCol in stickColliders)
-        {
-            foreach (var ringCol in ringColliders)
-            {
-                Physics.IgnoreCollision(ringCol, stickCol, true);
-            }
-        }
-    }
 }
