@@ -176,18 +176,11 @@ public class RingController : MonoBehaviour
         _windGust *= 0.97f;
         _rb.AddForce(Vector3.right * (windBase + _windGust), ForceMode.Acceleration);
 
-        // Forward movement — constant speed until we reach the stick, then stop
+        // Forward movement — constant speed until ring hits stick, then physics takes over
         Vector3 vel2 = _rb.linearVelocity;
-        float distToStick = transform.position.z - _targetZ;
-        if (distToStick > 1f)
+        if (!_hitStick)
         {
-            // Still approaching — fly forward
             vel2.z = -_forwardSpeed;
-        }
-        else
-        {
-            // At or past the stick — kill forward speed, let physics take over
-            vel2.z = Mathf.Lerp(vel2.z, 0f, Time.fixedDeltaTime * 8f);
         }
 
         // If ring flew way past the stick, fail out
